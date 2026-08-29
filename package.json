@@ -1,14 +1,18 @@
 {
-  "name": "my-project",
+  "name": "tokenledger",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev": "pnpm --filter @tokenledger/core build && next dev",
+    "build": "pnpm --filter @tokenledger/core build && next build",
+    "start": "next start",
+    "build:packages": "pnpm -r build",
+    "test": "pnpm --filter @tokenledger/core test",
+    "cli": "pnpm --filter @tokenledger/cli run start"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@tokenledger/core": "workspace:*",
     "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

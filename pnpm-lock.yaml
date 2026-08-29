@@ -11,6 +11,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.5.0
         version: 1.5.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@tokenledger/core':
+        specifier: workspace:*
+        version: link:packages/core
       '@vercel/analytics':
         specifier: 1.6.1
         version: 1.6.1(next@16.3.3(@babel/core@7.29.7)(@types/node@24.10.4)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
@@ -62,6 +65,34 @@ importers:
         version: 4.3.3
       typescript:
         specifier: 5.7.3
+        version: 5.7.3
+
+  packages/cli:
+    dependencies:
+      '@tokenledger/core':
+        specifier: workspace:*
+        version: link:../core
+      commander:
+        specifier: ^12.1.0
+        version: 12.1.0
+      picocolors:
+        specifier: ^1.1.1
+        version: 1.1.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.10.4
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+
+  packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.10.4
+      typescript:
+        specifier: ^5.7.3
         version: 5.7.3
 
 packages:
@@ -789,6 +820,10 @@ packages:
   commander@11.1.0:
     resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
     engines: {node: '>=16'}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   commander@14.0.3:
     resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
@@ -2518,6 +2553,8 @@ snapshots:
   code-block-writer@13.0.3: {}
 
   commander@11.1.0: {}
+
+  commander@12.1.0: {}
 
   commander@14.0.3: {}
 

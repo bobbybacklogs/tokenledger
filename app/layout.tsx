@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'TokenLedger — AI cost planner',
-  description: 'Model AI provider costs, subscription margins, and usage quotas before you scale.',
+  description: 'Model AI provider costs, subscription margins, and usage quotas with live model pricing from OpenRouter.',
   generator: 'v0.app',
 }
 
