@@ -53,8 +53,8 @@ console.log(projection.spend, projection.revenue, projection.margin)
 | `scaleUsersPerTier(tiers, total)` | Redistribute users across tiers proportionally. |
 | `defaultScenario()` | The bundled starter token scenario (Growth plan). |
 | `defaultImageScenario()` | The bundled starter image-lane scenario. |
-| `tierFromUsage(usage)` | Derive `{ input, output, quota }` from requests/month × exchange-size preset (business-friendly tier definition). |
-| `EXCHANGE_ESTIMATES` / `EXCHANGE_SIZES` / `ExchangeSize` | Exchange-size presets (`brief`/`standard`/`detailed`/`intensive`) and their per-exchange token estimates. |
+| `tierFromUsage(usage)` | Derive `{ input, output, quota }` from requests/month × interaction-size preset (business-friendly tier definition). |
+| `EXCHANGE_PRESETS` / `PRESET_SIZES` / `EXCHANGE_SIZES` / `presetEstimate` / `ExchangeSize` | Interaction-size presets (`short`/`medium`/`long`/`heavy`, plus `custom`) and their per-exchange token estimates. |
 | `money()` / `compact()` / `contextLabel()` / `number()` | Shared display helpers. |
 | `CATALOG_MODELS`, `CATALOG_IMAGE_MODELS`, `FEATURED_MODEL_IDS`, `FEATURED_IMAGE_MODEL_IDS`, `DEFAULT_MODEL_ID`, `DEFAULT_IMAGE_MODEL_ID` | Constants. |
 

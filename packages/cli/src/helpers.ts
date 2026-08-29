@@ -1,7 +1,6 @@
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
-  EXCHANGE_ESTIMATES,
   EXCHANGE_SIZES,
   catalogModels,
   defaultImageScenario,
@@ -9,6 +8,7 @@ import {
   findModel,
   loadModels,
   matchesCategory,
+  presetEstimate,
   tierFromUsage,
   type ExchangeSize,
   type LiveModel,
@@ -33,24 +33,27 @@ export function requireModel(list: ModelList, query?: string): LiveModel {
 }
 
 const EXCHANGE_ALIASES: Record<string, ExchangeSize> = {
-  brief: 'brief',
-  short: 'brief',
-  quick: 'brief',
-  standard: 'standard',
-  normal: 'standard',
-  regular: 'standard',
-  default: 'standard',
-  detailed: 'detailed',
-  deep: 'detailed',
-  long: 'detailed',
-  intensive: 'intensive',
-  heavy: 'intensive',
-  max: 'intensive',
+  short: 'short',
+  brief: 'short',
+  quick: 'short',
+  medium: 'medium',
+  standard: 'medium',
+  normal: 'medium',
+  regular: 'medium',
+  default: 'medium',
+  long: 'long',
+  detailed: 'long',
+  deep: 'long',
+  heavy: 'heavy',
+  intensive: 'heavy',
+  max: 'heavy',
+  custom: 'custom',
+  manual: 'custom',
 }
 
-/** Resolve a `--size <name>` exchange-size preset, defaulting to `standard`. */
+/** Resolve a `--size <name>` exchange-size preset, defaulting to `medium`. */
 export function resolveExchangeSize(spec?: string): ExchangeSize {
-  if (!spec || !spec.trim()) return 'standard'
+  if (!spec || !spec.trim()) return 'medium'
   const raw = spec.trim().toLowerCase()
   const size = EXCHANGE_ALIASES[raw]
   if (size) return size
@@ -60,10 +63,62 @@ export function resolveExchangeSize(spec?: string): ExchangeSize {
   process.exit(1)
 }
 
-/** A short description of an exchange size, e.g. "standard — typical chat". */
-export function exchangeSizeHint(size: ExchangeSize): string {
-  const estimate = EXCHANGE_ESTIMATES[size]
-  return `${estimate.label} (${estimate.description})`
+/** A resolved exchange-size choice plus any custom per-exchange tokens. */
+export interface ExchangeConfig {
+  size: ExchangeSize
+  /** For `custom`: average input tokens per exchange. */
+  inputTokens?: number
+  /** For `custom`: average output tokens per exchange. */
+  outputTokens?: number
+}
+
+function parseCount(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 ? n : undefined
+}
+
+/** Resolve `--size` plus the optional custom per-exchange token flags. */
+export function resolveExchangeConfig(opts: {
+  size?: string
+  inputPer?: string
+  outputPer?: string
+}): ExchangeConfig {
+  const size = resolveExchangeSize(opts.size)
+  if (size !== 'custom') return { size }
+  const inputTokens = parseCount(opts.inputPer)
+  const outputTokens = parseCount(opts.outputPer)
+  if (inputTokens === undefined || outputTokens === undefined) {
+    process.stderr.write(
+      pc.red('Custom exchange size requires --input-per <n> and --output-per <n> (tokens per exchange).\n'),
+    )
+    process.exit(1)
+  }
+  return { size, inputTokens, outputTokens }
+}
+
+/** The token assumption a config implies, shown so users can inspect it. */
+export interface ExchangeAssumption {
+  size: ExchangeSize
+  label: string
+  perInput: number
+  perOutput: number
+}
+
+/** Compute the per-exchange token assumption a config implies. */
+export function exchangeAssumption(config: ExchangeConfig): ExchangeAssumption {
+  const estimate = presetEstimate(config.size)
+  if (estimate) {
+    return { size: config.size, label: estimate.label, perInput: estimate.input, perOutput: estimate.output }
+  }
+  return { size: 'custom', label: 'Custom', perInput: config.inputTokens!, perOutput: config.outputTokens! }
+}
+
+/** A short description of an exchange choice, e.g. "Medium (typical assistant response)". */
+export function exchangeSizeHint(config: ExchangeConfig): string {
+  const estimate = presetEstimate(config.size)
+  if (estimate) return `${estimate.label} (${estimate.description})`
+  return `Custom (${config.inputTokens} in / ${config.outputTokens} out tokens per exchange)`
 }
 
 /**
@@ -74,7 +129,7 @@ export function exchangeSizeHint(size: ExchangeSize): string {
  *   derived from requests/month × the exchange-size preset.
  * - Raw tokens (advanced): `Name:users:price:inputTokens:outputTokens:quota`.
  */
-function readTierSpec(spec: string, exchangeSize: ExchangeSize): TierConfig {
+function readTierSpec(spec: string, config: ExchangeConfig): TierConfig {
   const parts = spec.split(':')
   const [name, usersRaw, priceRaw, aRaw, bRaw, cRaw] = parts
 
@@ -87,7 +142,13 @@ function readTierSpec(spec: string, exchangeSize: ExchangeSize): TierConfig {
       process.stderr.write(pc.red(`Invalid usage tier spec "${spec}". Expected Name:users:price:requests\n`))
       process.exit(1)
     }
-    const { input, output, quota } = tierFromUsage({ requestsPerUserPerMonth: requests, exchangeSize })
+    const { input, output, quota } = tierFromUsage({
+      requestsPerUserPerMonth: requests,
+      exchangeSize: config.size,
+      ...(config.size === 'custom'
+        ? { inputTokensPerExchange: config.inputTokens, outputTokensPerExchange: config.outputTokens }
+        : {}),
+    })
     return { name, users, price, input, output, quota }
   }
 
@@ -141,10 +202,10 @@ function readImageTierSpec(spec: string): TierConfig {
 /** Load tiers from --tier specs, a JSON file, or fall back to the defaults. */
 export async function resolveTiers(
   options: { tier?: string[]; tiers?: string },
-  exchangeSize: ExchangeSize,
+  config: ExchangeConfig,
 ): Promise<TierConfig[]> {
-  if (options.tiers) return readTierFile(options.tiers, exchangeSize)
-  if (options.tier && options.tier.length > 0) return options.tier.map((spec) => readTierSpec(spec, exchangeSize))
+  if (options.tiers) return readTierFile(options.tiers, config)
+  if (options.tier && options.tier.length > 0) return options.tier.map((spec) => readTierSpec(spec, config))
   return defaultScenario().tiers
 }
 
@@ -155,7 +216,7 @@ export async function resolveImageTiers(options: { tier?: string[]; tiers?: stri
   return defaultImageScenario().tiers
 }
 
-async function readTierFile(path: string, exchangeSize?: ExchangeSize): Promise<TierConfig[]> {
+async function readTierFile(path: string, config?: ExchangeConfig): Promise<TierConfig[]> {
   const fs = await import('node:fs/promises')
   let raw: string
   try {
@@ -175,10 +236,10 @@ async function readTierFile(path: string, exchangeSize?: ExchangeSize): Promise<
     process.stderr.write(pc.red(`Tiers file "${path}" must contain a JSON array of tier objects.\n`))
     process.exit(1)
   }
-  return parsed.map((item, index) => normalizeTier(item, index, exchangeSize))
+  return parsed.map((item, index) => normalizeTier(item, index, config))
 }
 
-function normalizeTier(value: unknown, index: number, exchangeSize?: ExchangeSize): TierConfig {
+function normalizeTier(value: unknown, index: number, config?: ExchangeConfig): TierConfig {
   const item = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>
   const name = typeof item.name === 'string' && item.name ? item.name : `Tier ${index + 1}`
   const asNum = (key: string) => (typeof item[key] === 'number' ? (item[key] as number) : Number(item[key] ?? NaN))
@@ -188,17 +249,36 @@ function normalizeTier(value: unknown, index: number, exchangeSize?: ExchangeSiz
   const output = asNum('output')
   const requests = asNum('requests')
 
-  let quota: number
   // A tier can be described in business terms with `requests` (plus an
   // optional `size` preset) instead of raw input/output token counts.
   if (!Number.isFinite(input) && !Number.isFinite(output) && Number.isFinite(requests)) {
-    const size = exchangeSize ?? (typeof item.size === 'string' ? resolveExchangeSize(item.size) : 'standard')
-    const computed = tierFromUsage({ requestsPerUserPerMonth: requests, exchangeSize: size })
-    quota = item.quota === undefined ? computed.quota : asNum('quota')
-    return { name, users, price, input: computed.input, output: computed.output, quota }
+    const perTierSize = typeof item.size === 'string' ? item.size : undefined
+    let cfg: ExchangeConfig
+    if (perTierSize) {
+      cfg =
+        resolveExchangeSize(perTierSize) === 'custom'
+          ? { size: 'custom', inputTokens: asNum('inputPerExchange'), outputTokens: asNum('outputPerExchange') }
+          : { size: resolveExchangeSize(perTierSize) }
+    } else {
+      cfg = config ?? { size: 'medium' }
+    }
+    if (cfg.size === 'custom' && (cfg.inputTokens === undefined || cfg.outputTokens === undefined)) {
+      process.stderr.write(
+        pc.red(`Tier "${name}" uses size "custom" — add inputPerExchange and outputPerExchange, or use raw input/output tokens.\n`),
+      )
+      process.exit(1)
+    }
+    const computed = tierFromUsage({
+      requestsPerUserPerMonth: requests,
+      exchangeSize: cfg.size,
+      ...(cfg.size === 'custom'
+        ? { inputTokensPerExchange: cfg.inputTokens, outputTokensPerExchange: cfg.outputTokens }
+        : {}),
+    })
+    return { name, users, price, input: computed.input, output: computed.output, quota: item.quota === undefined ? computed.quota : asNum('quota') }
   }
 
-  quota = item.quota === undefined ? 0 : asNum('quota')
+  const quota: number = item.quota === undefined ? 0 : asNum('quota')
   const tier: TierConfig = {
     name,
     users,
@@ -220,22 +300,38 @@ export interface ScenarioSource {
   name?: string
   /** Exchange-size preset for usage-style tier specs. */
   size?: string
+  /** Per-exchange input tokens when `size` is `custom`. */
+  inputPer?: string
+  /** Per-exchange output tokens when `size` is `custom`. */
+  outputPer?: string
+}
+
+export interface BuiltScenario {
+  scenario: Scenario
+  fromDefaults: boolean
+  /** The per-exchange token assumption when usage-style tiers were used. */
+  assumption?: ExchangeAssumption
 }
 
 /** Build a scenario from CLI flags + a scenario file (optionally). */
-export async function buildScenario(options: ScenarioSource): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
+export async function buildScenario(options: ScenarioSource): Promise<BuiltScenario> {
   if (options.scenario) return loadScenarioFile(options.scenario)
 
-  const exchangeSize = resolveExchangeSize(options.size)
-  const tiers = await resolveTiers({ tier: options.tierSpecs, tiers: options.tiersFile }, exchangeSize)
+  const config = resolveExchangeConfig({ size: options.size, inputPer: options.inputPer, outputPer: options.outputPer })
+  const tiers = await resolveTiers({ tier: options.tierSpecs, tiers: options.tiersFile }, config)
   const usingDefaultTiers = !options.tierSpecs?.length && !options.tiersFile
   const defaultBase = usingDefaultTiers ? defaultScenario() : null
   const users = options.users !== undefined ? Number(options.users) : defaultBase?.users
   const model = options.model?.trim() || defaultBase?.model || DEFAULT_MODEL_ID
 
+  // Surface the token assumption whenever usage-style specs are in play.
+  const usingUsage = Boolean(options.size) || (options.tierSpecs?.some((s) => s.split(':').length === 4) ?? false)
+  const assumption = usingUsage ? exchangeAssumption(config) : undefined
+
   return {
     scenario: { name: options.name ?? defaultBase?.name ?? 'CLI scenario', model, ...(users !== undefined ? { users } : {}), tiers },
     fromDefaults: usingDefaultTiers,
+    ...(assumption ? { assumption } : {}),
   }
 }
 

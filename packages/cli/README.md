@@ -58,14 +58,16 @@ tokenledger estimate -m openai/gpt-4o-mini -u 12000
 tokenledger estimate -t "Free:8000:0:18000:6000:25000" -t "Pro:3200:29:120000:40000:250000" -u 12000
 ```
 
-Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable — usage format `Name:users:price:requests`, or token format `Name:users:price:input:output:quota`), `-z, --size <brief|standard|detailed|intensive>` (default standard), `-f, --tiers <file>`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable — usage format `Name:users:price:requests`, or token format `Name:users:price:input:output:quota`), `-z, --size <short|medium|long|heavy|custom>` (default medium), `--input-per <n>` / `--output-per <n>` (per-exchange tokens when `--size custom`), `-f, --tiers <file>`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
 
-Tiers can be written in **business terms** (requests per user per month, with an exchange-size preset) — no raw token counts needed. Example with the usage format:
+Tiers can be written in **business terms** (requests per user per month, with an interaction-size preset) — no raw token counts needed. The derived per-exchange token assumption is printed above the projection. Example with the usage format:
 
 ```
 tokenledger estimate -m openai/gpt-4o-mini -u 12000 \
-  -t "Free:8000:0:100" -t "Pro:3200:29:1000" -t "Business:800:99:5000" --size standard
+  -t "Free:8000:0:100" -t "Pro:3200:29:1000" -t "Business:800:99:5000" --size medium
 ```
+
+`--size` presets: **Short** (quick answers/classifications), **Medium** (typical assistant response), **Long** (detailed generation/analysis), **Heavy** (large-context/code-heavy), or **Custom** with `--input-per`/`--output-per`. The `ADVANCED` path (raw `input:output:quota`) lets power users set exact tokens directly.
 
 ### `tokenledger scenario <file>`
 
@@ -117,7 +119,7 @@ tokenledger wizard --source models.dev
 tokenledger wizard --name "Launch plan" --file launch.json
 ```
 
-Flow: scenario name → token or image lane → model (type an id, or a search term like `claude` to choose from matches) → total users (0 to keep tier counts as-is) → **exchange size** (Brief/Standard/Detailed/Intensive) → number of tiers → per-tier users, price, and **requests per user / month** → live projection → save to a scenario JSON file. Token budgets are derived automatically from requests × exchange size, so you never enter raw token counts.
+Flow: scenario name → token or image lane → model (type an id, or a search term like `claude` to choose from matches) → total users (0 to keep tier counts as-is) → **interaction size** (Short/Medium/Long/Heavy, or Custom with your own per-exchange tokens) → number of tiers → per-tier users, price, and **requests per user / month** → live projection → save to a scenario JSON file. Token budgets are derived automatically from requests × interaction size, and the assumption is shown, so you never enter raw token counts.
 
 Options: `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
 
@@ -179,7 +181,7 @@ Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --
 { "name": "Pro", "users": 3200, "price": 29, "input": 120000, "output": 40000, "quota": 250000, "images": 100 }
 ```
 
-Tiers can instead be written in **business terms** — `requests` per user per month plus an optional `size` preset — and the token budgets are derived for you (default size: standard):
+Tiers can instead be written in **business terms** — `requests` per user per month plus an optional `size` preset — and the token budgets are derived for you (default size: medium):
 
 ```json
 {
@@ -187,12 +189,12 @@ Tiers can instead be written in **business terms** — `requests` per user per m
   "model": "openai/gpt-4o-mini",
   "tiers": [
     { "name": "Free", "users": 8000, "price": 0, "requests": 100 },
-    { "name": "Pro", "users": 3200, "price": 29, "requests": 1000, "size": "detailed" }
+    { "name": "Pro", "users": 3200, "price": 29, "requests": 1000, "size": "long" }
   ]
 }
 ```
 
-`size` is one of `brief`, `standard`, `detailed`, `intensive`.
+`size` is one of `short`, `medium`, `long`, `heavy` (presets) or `custom` (which then requires `inputPerExchange`/`outputPerExchange` in the tier).
 
 ## Pricing source
 

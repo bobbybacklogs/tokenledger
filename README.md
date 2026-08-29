@@ -123,7 +123,7 @@ Every command shows whether prices are **live** (source + fetch time + model cou
 Tiers can be defined in **business terms** instead of raw tokens — `requests` per user per month plus a `size` preset (tokens are derived for you):
 
 ```json
-{ "name": "Pro", "users": 3200, "price": 29, "requests": 1000, "size": "detailed" }
+{ "name": "Pro", "users": 3200, "price": 29, "requests": 1000, "size": "long" }
 ```
 
 ## Cost model

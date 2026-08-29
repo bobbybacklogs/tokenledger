@@ -54,7 +54,9 @@ export function compareCommand(program: Command): void {
     .option('--scenario <file>', 'scenario JSON file to compare against')
     .option('-t, --tier <spec>', 'add a tier — usage: Name:users:price:requests, or tokens: Name:users:price:input:output:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
-    .option('-z, --size <name>', 'exchange size for usage-style tiers: brief, standard, detailed, intensive (default: standard)')
+    .option('-z, --size <name>', 'interaction size for usage-style tiers: short, medium, long, heavy, or custom (default: medium)')
+    .option('--input-per <n>', 'per-exchange input tokens when --size custom')
+    .option('--output-per <n>', 'per-exchange output tokens when --size custom')
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
     .option('-k, --category <name>', 'with no model ids, compare models of this category: general, coding, reasoning, vision, image, embedding, audio')
@@ -74,6 +76,8 @@ export function compareCommand(program: Command): void {
           offline?: boolean
           source?: string
           size?: string
+          inputPer?: string
+          outputPer?: string
           json?: boolean
         },
       ) => {
@@ -81,13 +85,20 @@ export function compareCommand(program: Command): void {
         const spec = parseSourceSpec(options.source)
         const offline = Boolean(options.offline)
         const category = resolveCategory(options.category)
-        const { scenario } = await buildScenario({
+        const { scenario, assumption } = await buildScenario({
           scenario: options.scenario,
           users: options.users,
           tierSpecs: options.tier,
           tiersFile: options.tiers,
           size: options.size,
+          inputPer: options.inputPer,
+          outputPer: options.outputPer,
         })
+        if (assumption && !options.json) {
+          process.stdout.write(
+            pc.dim(`Assumed interaction: ${assumption.label} — ${assumption.perInput} in / ${assumption.perOutput} out tokens per exchange.\n`),
+          )
+        }
 
         // Decide which models to compare and the source that prices each one.
         let queries: string[]

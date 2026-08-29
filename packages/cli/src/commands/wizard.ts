@@ -2,8 +2,8 @@ import { createInterface, type Interface } from 'node:readline'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
-  EXCHANGE_ESTIMATES,
-  EXCHANGE_SIZES,
+  EXCHANGE_PRESETS,
+  PRESET_SIZES,
   calculateImageScenario,
   calculateScenario,
   defaultImageScenario,
@@ -19,7 +19,7 @@ import {
 } from '@tokenledger/core'
 import type { Command } from 'commander'
 import pc from 'picocolors'
-import { resolveModelList, sourceLine } from '../helpers.js'
+import { resolveModelList, sourceLine, type ExchangeConfig } from '../helpers.js'
 import { renderImageProjection, renderProjection } from '../render.js'
 
 type Lane = 'tokens' | 'images'
@@ -92,9 +92,9 @@ export function wizardCommand(program: Command): void {
         const totalUsers = await askTotalUsers(prompter)
 
         process.stdout.write('\n' + pc.cyan('── Tiers ──') + '\n')
-        const exchangeSize = lane === 'tokens' ? await chooseExchangeSize(prompter) : 'standard'
+        const exchangeConfig: ExchangeConfig = lane === 'tokens' ? await chooseExchangeSize(prompter) : { size: 'medium' }
         const count = await askTierCount(prompter)
-        const tiers = await collectTiers(prompter, count, lane, exchangeSize)
+        const tiers = await collectTiers(prompter, count, lane, exchangeConfig)
 
         const scenario: Scenario = {
           name,
@@ -163,7 +163,7 @@ async function askTierCount(p: Prompter): Promise<number> {
   }
 }
 
-async function collectTiers(p: Prompter, count: number, lane: Lane, exchangeSize: ExchangeSize): Promise<TierConfig[]> {
+async function collectTiers(p: Prompter, count: number, lane: Lane, config: ExchangeConfig): Promise<TierConfig[]> {
   const defaults = (lane === 'images' ? defaultImageScenario() : defaultScenario()).tiers
   const fallback: TierConfig =
     defaults[defaults.length - 1] ?? { name: 'Tier', users: 1000, price: 0, input: 18_000, output: 6_000, quota: 25_000 }
@@ -176,8 +176,17 @@ async function collectTiers(p: Prompter, count: number, lane: Lane, exchangeSize
     const price = await askNumber(p, '  Subscription price per user / month ($)', base.price)
     if (lane === 'tokens') {
       const requests = await askNumber(p, '  Requests per user / month', 300)
-      const { input, output, quota } = tierFromUsage({ requestsPerUserPerMonth: requests, exchangeSize })
+      const { input, output, quota } = tierFromUsage({
+        requestsPerUserPerMonth: requests,
+        exchangeSize: config.size,
+        ...(config.size === 'custom'
+          ? { inputTokensPerExchange: config.inputTokens, outputTokensPerExchange: config.outputTokens }
+          : {}),
+      })
       tiers.push({ name, users, price, input, output, quota })
+      process.stdout.write(
+        pc.dim(`  → ${input.toLocaleString()} in / ${output.toLocaleString()} out / ${quota.toLocaleString()} quota tokens per user / month\n`),
+      )
     } else {
       const images = await askNumber(p, '  Images per user / month', base.images ?? 0)
       tiers.push({ name, users, price, input: 0, output: 0, quota: 0, images })
@@ -187,34 +196,53 @@ async function collectTiers(p: Prompter, count: number, lane: Lane, exchangeSize
 }
 
 const SIZE_BY_NAME: Record<string, ExchangeSize> = {
-  brief: 'brief',
-  short: 'brief',
-  quick: 'brief',
-  standard: 'standard',
-  normal: 'standard',
-  default: 'standard',
-  detailed: 'detailed',
-  deep: 'detailed',
-  long: 'detailed',
-  intensive: 'intensive',
-  heavy: 'intensive',
-  max: 'intensive',
+  short: 'short',
+  brief: 'short',
+  quick: 'short',
+  medium: 'medium',
+  standard: 'medium',
+  normal: 'medium',
+  default: 'medium',
+  long: 'long',
+  detailed: 'long',
+  deep: 'long',
+  heavy: 'heavy',
+  intensive: 'heavy',
+  max: 'heavy',
+  custom: 'custom',
+  manual: 'custom',
 }
 
-/** Ask how wordy a typical exchange is, returning an exchange-size preset. */
-async function chooseExchangeSize(p: Prompter): Promise<ExchangeSize> {
-  process.stdout.write('\n' + pc.cyan('── Average exchange size ──') + '\n')
-  EXCHANGE_SIZES.forEach((size, i) => {
-    const estimate = EXCHANGE_ESTIMATES[size]
+/** Ask how big a typical AI interaction is, returning the exchange config. */
+async function chooseExchangeSize(p: Prompter): Promise<ExchangeConfig> {
+  process.stdout.write('\n' + pc.cyan('── Average interaction size ──') + '\n')
+  PRESET_SIZES.forEach((size, i) => {
+    const estimate = EXCHANGE_PRESETS[size]
     process.stdout.write(`  ${i + 1}. ${estimate.label} — ${estimate.description}\n`)
   })
+  process.stdout.write(`  ${PRESET_SIZES.length + 1}. Custom — your own input/output tokens\n`)
   for (;;) {
-    const raw = await p.ask('How wordy is a typical request?', '2')
+    const raw = await p.ask('How big is a typical AI interaction?', '2')
     const value = raw.trim().toLowerCase()
-    if (/^[1-4]$/.test(value)) return EXCHANGE_SIZES[Number(value) - 1]!
-    const size = SIZE_BY_NAME[value]
-    if (size) return size
-    process.stdout.write(pc.red('  Pick 1–4 (Brief, Standard, Detailed, Intensive).\n'))
+    if (/^[1-4]$/.test(value)) {
+      const size = PRESET_SIZES[Number(value) - 1]!
+      const estimate = EXCHANGE_PRESETS[size]
+      process.stdout.write(pc.dim(`  → Assumed ${estimate.input} in / ${estimate.output} out tokens per exchange.\n`))
+      return { size }
+    }
+    if (value === '5' || SIZE_BY_NAME[value] === 'custom') {
+      const inputTokens = await askNumber(p, '  Average input tokens per exchange', 400)
+      const outputTokens = await askNumber(p, '  Average output tokens per exchange', 800)
+      process.stdout.write(pc.dim(`  → Custom: ${inputTokens} in / ${outputTokens} out tokens per exchange.\n`))
+      return { size: 'custom', inputTokens, outputTokens }
+    }
+    const preset = SIZE_BY_NAME[value]
+    if (preset) {
+      const estimate = EXCHANGE_PRESETS[preset]
+      process.stdout.write(pc.dim(`  → Assumed ${estimate.input} in / ${estimate.output} out tokens per exchange.\n`))
+      return { size: preset }
+    }
+    process.stdout.write(pc.red('  Pick 1–4, or 5 for Custom.\n'))
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Command } from 'commander'
 import type { Scenario } from '@tokenledger/core'
+import pc from 'picocolors'
 import { buildScenario, loadScenarioFile, resolveModelList } from '../helpers.js'
 import { runProjection } from '../render.js'
 
@@ -18,7 +19,9 @@ export function estimateCommand(program: Command): void {
     .option('-u, --users <n>', 'total users; per-tier splits scale proportionally')
     .option('-t, --tier <spec>', 'add a tier — usage: Name:users:price:requests, or tokens: Name:users:price:input:output:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
-    .option('-z, --size <name>', 'exchange size for usage-style tiers: brief, standard, detailed, intensive (default: standard)')
+    .option('-z, --size <name>', 'interaction size for usage-style tiers: short, medium, long, heavy, or custom (default: medium)')
+    .option('--input-per <n>', 'per-exchange input tokens when --size custom')
+    .option('--output-per <n>', 'per-exchange output tokens when --size custom')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-j, --json', 'output raw JSON')
@@ -29,18 +32,27 @@ export function estimateCommand(program: Command): void {
         tier?: string[]
         tiers?: string
         size?: string
+        inputPer?: string
+        outputPer?: string
         offline?: boolean
         source?: string
         json?: boolean
       }) => {
         const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
-        const { scenario } = await buildScenario({
+        const { scenario, assumption } = await buildScenario({
           model: options.model,
           users: options.users,
           tierSpecs: options.tier,
           tiersFile: options.tiers,
           size: options.size,
+          inputPer: options.inputPer,
+          outputPer: options.outputPer,
         })
+        if (assumption && !options.json) {
+          process.stdout.write(
+            pc.dim(`Assumed interaction: ${assumption.label} — ${assumption.perInput} in / ${assumption.perOutput} out tokens per exchange.\n`),
+          )
+        }
         await runProjection(list, scenario, { json: Boolean(options.json), model: options.model })
       },
     )
