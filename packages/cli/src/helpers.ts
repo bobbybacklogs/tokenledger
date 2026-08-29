@@ -198,13 +198,49 @@ export async function loadScenarioFile(path: string): Promise<{ scenario: Scenar
   return { scenario: { name, model, ...(users !== undefined ? { users } : {}), tiers }, fromDefaults: false }
 }
 
-export async function resolveModelList(offline: boolean): Promise<ModelList> {
-  return offline ? catalogModels() : loadModels({ offline })
+/** Which catalog a command loads: live OpenRouter, live models.dev, or bundled offline. */
+export type SourceChoice = 'openrouter' | 'modelsdev' | 'offline'
+
+const SOURCE_NAMES: Record<string, SourceChoice> = {
+  openrouter: 'openrouter',
+  live: 'openrouter',
+  'models.dev': 'modelsdev',
+  modelsdev: 'modelsdev',
+  mdev: 'modelsdev',
+  offline: 'offline',
+  catalog: 'offline',
+  bundled: 'offline',
+}
+
+/** Resolve a `--source <name>` value (with `--offline` as an alias) to a choice. */
+export function resolveSourceChoice(opts: { source?: string; offline?: boolean }): SourceChoice {
+  if (opts.offline) return 'offline'
+  const raw = opts.source?.trim().toLowerCase()
+  if (raw) {
+    const choice = SOURCE_NAMES[raw]
+    if (choice) return choice
+    process.stderr.write(pc.red(`Unknown source "${opts.source}". Use one of: openrouter, models.dev, offline.\n`))
+    process.exit(1)
+  }
+  return 'openrouter'
+}
+
+/**
+ * Resolve a model list from the requested source. Falls back to the bundled
+ * catalog on network failure for live sources (never throws).
+ */
+export async function resolveModelList(opts: { source?: string; offline?: boolean }): Promise<ModelList> {
+  const source = resolveSourceChoice(opts)
+  if (source === 'offline') return catalogModels()
+  return loadModels({ source })
 }
 
 export function sourceLine(list: ModelList): string {
   if (list.source === 'live') {
     return pc.green('live pricing') + pc.dim(` · OpenRouter · ${list.models.length.toLocaleString()} models`) + pc.dim(` · fetched ${list.fetchedAt}`)
+  }
+  if (list.source === 'modelsdev') {
+    return pc.green('models.dev pricing') + pc.dim(` · ${list.models.length.toLocaleString()} models`) + pc.dim(` · fetched ${list.fetchedAt}`)
   }
   return pc.yellow('offline estimates') + pc.dim(` · bundled catalog · ${list.models.length.toLocaleString()} models`)
 }

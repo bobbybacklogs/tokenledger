@@ -1,8 +1,12 @@
+import { ModelsDevClient, type ProviderMap } from 'mdev-sdk'
 import { CATALOG_IMAGE_MODELS, CATALOG_MODELS, DEFAULT_IMAGE_MODEL_ID, DEFAULT_MODEL_ID, FEATURED_IMAGE_MODEL_IDS, FEATURED_MODEL_IDS } from './catalog.js'
 import type { LiveModel, ModelList } from './types.js'
 
 /** OpenRouter's public model catalog endpoint (no API key required). */
 export const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
+
+/** models.dev's public catalog root (the open catalog behind OpenCode). */
+export const MODELSDEV_BASE_URL = 'https://models.dev'
 
 /** Nicer display names for common id namespaces. */
 const PROVIDER_NAMES: Record<string, string> = {
@@ -105,8 +109,43 @@ function roundPrice(value: number): number {
   return Math.round(value * 10_000) / 10_000
 }
 
+/**
+ * Normalize a models.dev `ProviderMap` (from `catalog()` / `/catalog.json`)
+ * into `LiveModel[]`.
+ *
+ * models.dev prices are already USD per 1M tokens, so nothing is scaled.
+ * A model with no `cost` is *unpriced* (absence ≠ free) and can't be quoted —
+ * skip it, mirroring the OpenRouter missing-price skip. Canonical ids are
+ * `provider/model`, and provider display names come from the catalog itself.
+ * models.dev does not publish per-image pricing, so the image lane is empty.
+ */
+export function normalizeModelsDevProviders(providers: ProviderMap): LiveModel[] {
+  const models: LiveModel[] = []
+  for (const provider of Object.values(providers)) {
+    if (!provider || typeof provider !== 'object') continue
+    for (const model of Object.values(provider.models ?? {})) {
+      if (!model || typeof model !== 'object') continue
+      const cost = model.cost
+      if (!cost || !Number.isFinite(cost.input) || !Number.isFinite(cost.output) || cost.input < 0 || cost.output < 0) continue
+      const context = model.limit?.context && model.limit.context > 0 ? model.limit.context : 0
+      const id = `${provider.id}/${model.id}`.trim().replace(/\/+$/, '')
+      if (!id) continue
+      models.push({
+        id,
+        name: (model.name || id).trim(),
+        provider: provider.name || provider.id,
+        input: roundPrice(cost.input),
+        output: roundPrice(cost.output),
+        context,
+      })
+    }
+  }
+  models.sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id))
+  return models
+}
+
 export interface FetchOptions {
-  /** Override the OpenRouter endpoint (mainly for tests). */
+  /** Override the source base URL (mainly for tests). Default: the OpenRouter endpoint (or models.dev for `fetchModelsDev`). */
   baseUrl?: string
   /** Abort the request after this many milliseconds. Default 10s. */
   timeoutMs?: number
@@ -136,22 +175,54 @@ export async function fetchModels(opts: FetchOptions = {}): Promise<ModelList> {
   }
 }
 
+/** Fetch and normalize the models.dev catalog (via `mdev-sdk`). */
+export async function fetchModelsDev(opts: FetchOptions = {}): Promise<ModelList> {
+  const { baseUrl = MODELSDEV_BASE_URL, timeoutMs = 10_000, signal } = opts
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort)
+
+  try {
+    const client = new ModelsDevClient({ baseUrl })
+    const catalog = await client.catalog({ signal: controller.signal })
+    return {
+      source: 'modelsdev',
+      fetchedAt: new Date().toISOString(),
+      models: normalizeModelsDevProviders(catalog.providers ?? {}),
+    }
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
+
 /** The bundled offline estimate catalogs as a `ModelList` (token + image lanes). */
 export function catalogModels(): ModelList {
   return { source: 'offline', fetchedAt: null, models: [...CATALOG_MODELS, ...CATALOG_IMAGE_MODELS] }
 }
 
 export interface LoadOptions extends FetchOptions {
-  /** Skip the network and use the bundled catalog. */
+  /** Skip the network and use the bundled catalog (alias for `source: 'offline'`). */
   offline?: boolean
+  /** Which live catalog to load when not offline. Default: OpenRouter. */
+  source?: 'openrouter' | 'modelsdev' | 'offline'
 }
 
 /**
- * Load a model list: live from OpenRouter when possible, otherwise the
- * bundled catalog. Never throws — check `result.source` for provenance.
+ * Load a model list: live from OpenRouter (or models.dev with
+ * `source: 'modelsdev'`) when possible, otherwise the bundled catalog.
+ * Never throws — check `result.source` for provenance.
  */
 export async function loadModels(opts: LoadOptions = {}): Promise<ModelList> {
-  if (opts.offline) return catalogModels()
+  if (opts.source === 'offline' || opts.offline) return catalogModels()
+  if (opts.source === 'modelsdev') {
+    try {
+      return await fetchModelsDev(opts)
+    } catch {
+      return catalogModels()
+    }
+  }
   try {
     return await fetchModels(opts)
   } catch {

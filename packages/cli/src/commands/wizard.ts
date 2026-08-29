@@ -35,9 +35,10 @@ export function wizardCommand(program: Command): void {
     .command('wizard')
     .description('Build a scenario interactively, step by step (no JSON needed)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
+    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-n, --name <name>', 'pre-set the scenario name')
     .option('-f, --file <file>', 'pre-set the file to save the scenario to')
-    .action(async (options: { offline?: boolean; name?: string; file?: string }) => {
+    .action(async (options: { offline?: boolean; source?: string; name?: string; file?: string }) => {
       if (!process.stdin.isTTY && !process.env.TOKENLEDGER_WIZARD_SCRIPT) {
         process.stderr.write(
           pc.yellow('The wizard is interactive — run it in a terminal, or pipe answers line by line with TOKENLEDGER_WIZARD_SCRIPT=1.\n'),
@@ -70,7 +71,7 @@ export function wizardCommand(program: Command): void {
       const prompter: Prompter = { ask }
 
       try {
-        const list = await resolveModelList(Boolean(options.offline))
+        const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
         process.stdout.write(
           pc.cyan('=== TokenLedger scenario wizard ===\n') +
             pc.dim('Press Enter to accept the [default] for each question.\n') +

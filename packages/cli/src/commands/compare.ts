@@ -42,6 +42,7 @@ export function compareCommand(program: Command): void {
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
+    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('-j, --json', 'output raw JSON')
     .action(
@@ -54,10 +55,11 @@ export function compareCommand(program: Command): void {
           users?: string
           limit?: number
           offline?: boolean
+          source?: string
           json?: boolean
         },
       ) => {
-        const list: ModelList = await resolveModelList(Boolean(options.offline))
+        const list: ModelList = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
         const limit = options.limit ?? 8
         const { scenario } = await buildScenario({
           scenario: options.scenario,

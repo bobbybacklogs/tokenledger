@@ -10,13 +10,13 @@
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
 </p>
 
-TokenLedger is an AI unit-economics planner for SaaS products. It pulls **live model pricing** from the public [OpenRouter catalog](https://openrouter.ai/docs/models) (`GET /api/v1/models`, no API key required), projects token and image-generation spend against your subscription tiers, and turns it into revenue, margin, and per-user cost — as an npm SDK, a CLI, and a browser planner.
+TokenLedger is an AI unit-economics planner for SaaS products. It pulls **live model pricing** from the public [OpenRouter catalog](https://openrouter.ai/docs/models) (`GET /api/v1/models`, no API key required) or the public [models.dev](https://models.dev) catalog, projects token and image-generation spend against your subscription tiers, and turns it into revenue, margin, and per-user cost — as an npm SDK, a CLI, and a browser planner.
 
 ## Packages
 
 | Package | What it gives you |
 | --- | --- |
-| **[@tokenledger/core](https://www.npmjs.com/package/@tokenledger/core)** | The calculation engine + live pricing client. Framework-agnostic TypeScript, zero runtime dependencies, works in Node ≥ 20 and the browser. |
+| **[@tokenledger/core](https://www.npmjs.com/package/@tokenledger/core)** | The calculation engine + live pricing client. Framework-agnostic TypeScript, one runtime dependency (`mdev-sdk`, itself zero-dependency), works in Node ≥ 20 and the browser. |
 | **[@tokenledger/cli](https://www.npmjs.com/package/@tokenledger/cli)** | The `tokenledger` terminal app, built on core. Browse pricing, project scenarios, compare models. |
 | **`app/` (this repo)** | A Next.js web planner using the same core — instant to try, no install. |
 
@@ -24,7 +24,7 @@ All calculations live in `@tokenledger/core`, so the SDK, the CLI, and the web a
 
 ## What it does
 
-- Pulls **live model pricing** from OpenRouter, covering OpenAI, Anthropic, Google, Mistral, and hundreds of other providers — with a bundled estimate catalog as an offline fallback, so it never breaks.
+- Pulls **live model pricing** from OpenRouter (default) or models.dev (`--source models.dev`), covering OpenAI, Anthropic, Google, Mistral, and hundreds of other providers — with a bundled estimate catalog as an offline fallback, so it never breaks.
 - Select an active model and calculate projected monthly AI spend.
 - Define customer tiers (Free / Pro / Business) with user counts, subscription prices, token usage per user, and dynamic monthly quotas.
 - Run a parallel **image lane** — image model × images/user/month × users — with its own per-image pricing, benchmark table, and projection.
@@ -40,7 +40,8 @@ npm install @tokenledger/core
 ```ts
 import { calculateImageScenario, calculateScenario, defaultScenario, findModel, loadModels } from '@tokenledger/core'
 
-// 1. Live prices from OpenRouter (bundled catalog falls back when offline).
+// 1. Live prices from OpenRouter by default; pass { source: 'modelsdev' } for models.dev.
+//    The bundled catalog falls back when offline.
 const models = await loadModels()
 
 // 2. Pick a model by id, name, or partial slug.
@@ -71,6 +72,7 @@ A few examples:
 tokenledger models
 tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
+tokenledger models --source models.dev "claude-opus"     # models.dev catalog instead
 tokenledger models --featured --offline     # no network, bundled estimates
 
 # Project AI spend / revenue / margin for a model and tier mix
@@ -96,7 +98,7 @@ tokenledger image-estimate -m openai/gpt-5-image
 tokenledger image-compare --limit 10
 ```
 
-Every command shows whether prices are **live** (OpenRouter + fetch time + model count) or **offline estimates**. See [packages/cli/README.md](packages/cli/README.md) for full documentation.
+Every command shows whether prices are **live** (source + fetch time + model count) or **offline estimates**. Token-lane commands accept `--source openrouter` (default), `--source models.dev`, or `--source offline`. See [packages/cli/README.md](packages/cli/README.md) for full documentation.
 
 ## Scenario file format
 
@@ -125,7 +127,7 @@ image lane: monthly image cost
            = users × (images per user / month) × price per image
 ```
 
-Provider rates are USD per 1 million tokens, read live from OpenRouter. Image generation is priced **per generated image** (OpenRouter's `image_output` is converted to USD per image, e.g. GPT-5 Image lists `0.00004` → `$0.04/image`). Model pricing is intended for planning, not billing reconciliation. Revenue = users × price; gross margin = (revenue − spend) / revenue.
+Provider rates are USD per 1 million tokens, read live from OpenRouter (or models.dev with `--source models.dev`). Image generation is priced **per generated image** (OpenRouter's `image_output` is converted to USD per image, e.g. GPT-5 Image lists `0.00004` → `$0.04/image`). Model pricing is intended for planning, not billing reconciliation. Revenue = users × price; gross margin = (revenue − spend) / revenue.
 
 ## Web planner
 

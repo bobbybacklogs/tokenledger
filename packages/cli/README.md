@@ -1,6 +1,6 @@
 # @tokenledger/cli
 
-Command-line AI unit economics for SaaS products. Pulls **live model pricing** from OpenRouter and projects AI spend, revenue, and gross margin for your subscription tiers.
+Command-line AI unit economics for SaaS products. Pulls **live model pricing** from OpenRouter (or models.dev with `--source models.dev`) and projects AI spend, revenue, and gross margin for your subscription tiers.
 
 ## Install
 
@@ -17,17 +17,18 @@ Requires Node.js ≥ 20.
 
 ### `tokenledger models [search]`
 
-List model pricing — live from OpenRouter (thousands of models), or the bundled estimate catalog with `--offline`.
+List model pricing — live from OpenRouter (thousands of models), live from models.dev with `--source models.dev`, or the bundled estimate catalog with `--offline`.
 
 ```
 tokenledger models
 tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
+tokenledger models --source models.dev "claude-opus"
 tokenledger models --featured
 tokenledger models --json
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|provider|id>` (default provider), `-l, --limit <n>`, `-f, --featured`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|provider|id>` (default provider), `-l, --limit <n>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
 
 ### `tokenledger estimate`
 
@@ -39,7 +40,7 @@ tokenledger estimate -m openai/gpt-4o-mini -u 12000
 tokenledger estimate -t "Free:8000:0:18000:6000:25000" -t "Pro:3200:29:120000:40000:250000" -u 12000
 ```
 
-Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable, `Name:users:price:inputTokens:outputTokens:quota`), `-f, --tiers <file>`, `-o, --offline`, `-j, --json`.
+Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable, `Name:users:price:inputTokens:outputTokens:quota`), `-f, --tiers <file>`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
 
 ### `tokenledger scenario <file>`
 
@@ -76,12 +77,13 @@ Build a scenario interactively, step by step — **no JSON required**. Every que
 ```
 tokenledger wizard
 tokenledger wizard --offline
+tokenledger wizard --source models.dev
 tokenledger wizard --name "Launch plan" --file launch.json
 ```
 
 Flow: scenario name → token or image lane → model (type an id, or a search term like `claude` to choose from matches) → total users (0 to keep tier counts as-is) → number of tiers → per-tier users, price, and tokens+quota (or images per user) → live projection → save to a scenario JSON file.
 
-Options: `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
+Options: `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
 
 ### `tokenledger images [search]`
 
@@ -143,7 +145,11 @@ Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --
 
 ## Pricing source
 
-By default every command hits the public OpenRouter models endpoint (`https://openrouter.ai/api/v1/models`) — no API key. If the feed is unreachable, the CLI falls back to the bundled estimate catalog and tells you so. Use `--offline` to force the catalog.
+By default every command hits the public OpenRouter models endpoint (`https://openrouter.ai/api/v1/models`) — no API key.
+
+With `--source models.dev`, the token-lane commands (`models`, `estimate`, `scenario`, `compare`, `wizard`) use the models.dev public catalog instead (`https://models.dev`, via `mdev-sdk`) — the same open catalog of providers, models, and prices that powers OpenCode. It carries ~7,000⁺ priced models with provider display names from the catalog itself.
+
+If a live feed is unreachable, the CLI falls back to the bundled estimate catalog and tells you so. Use `--offline` (alias for `--source offline`) to force the bundled catalog. Image-lane commands (`images`, `image-estimate`, `image-compare`) run on OpenRouter or the offline catalog only — models.dev does not publish per-image prices.
 
 ## Output
 

@@ -6,8 +6,10 @@ import {
   featuredImageModels,
   featuredModels,
   findModel,
+  normalizeModelsDevProviders,
   normalizeOpenRouterModels,
   providerFromId,
+  type ProviderMap,
 } from '../dist/index.js'
 
 const PAYLOAD = {
@@ -116,6 +118,109 @@ describe('normalizeOpenRouterModels', () => {
   it('returns [] for a malformed payload', () => {
     assert.deepEqual(normalizeOpenRouterModels({ nope: true }), [])
     assert.deepEqual(normalizeOpenRouterModels(null), [])
+  })
+})
+
+describe('normalizeModelsDevProviders', () => {
+  // models.dev is typed strictly; tests use a loose fixture cast so the bits
+  // we care about (canonical ids, pricing, unpriced skips) stay readable.
+  const providers = {
+    openai: {
+      id: 'openai',
+      env: ['OPENAI_API_KEY'],
+      npm: '@opencode-ai/ai/providers/openai',
+      name: 'OpenAI',
+      doc: 'https://openai.com',
+      models: {
+        'gpt-4o-mini': {
+          id: 'gpt-4o-mini',
+          name: 'GPT-4o mini',
+          description: 'Fast small model',
+          attachment: true,
+          reasoning: false,
+          tool_call: true,
+          interleaved: true,
+          temperature: true,
+          knowledge: '2024-10',
+          release_date: '2024-07',
+          last_updated: '2026-01',
+          modalities: { input: ['text'], output: ['text'] },
+          open_weights: false,
+          limit: { context: 128000, output: 16384 },
+          cost: { input: 0.15, output: 0.6 },
+        },
+        // unpriced: absence of cost is NOT free -> skipped
+        'unpriced-slug': {
+          id: 'unpriced-slug',
+          name: 'Unpriced',
+          description: 'no cost at all',
+          attachment: false,
+          reasoning: false,
+          tool_call: false,
+          interleaved: false,
+          temperature: true,
+          release_date: '2025-01',
+          last_updated: '2026-01',
+          modalities: { input: ['text'], output: ['text'] },
+          open_weights: false,
+          limit: { context: 4096, output: 1024 },
+        },
+      },
+    },
+    anthropic: {
+      id: 'anthropic',
+      env: ['ANTHROPIC_API_KEY'],
+      npm: '@opencode-ai/ai/providers/anthropic',
+      name: 'Anthropic',
+      doc: 'https://anthropic.com',
+      models: {
+        'claude-3.5-haiku': {
+          id: 'claude-3.5-haiku',
+          name: 'Claude 3.5 Haiku',
+          description: 'Fast',
+          attachment: true,
+          reasoning: false,
+          tool_call: true,
+          interleaved: true,
+          temperature: true,
+          knowledge: '2025-01',
+          release_date: '2024-10',
+          last_updated: '2026-02',
+          modalities: { input: ['text', 'image'], output: ['text'] },
+          open_weights: false,
+          limit: { context: 200000, output: 8192 },
+          cost: { input: 0.8, output: 4 },
+        },
+      },
+    },
+  } as unknown as ProviderMap
+
+  it('maps provider/model to canonical LiveModels with USD-per-1M prices', () => {
+    const models = normalizeModelsDevProviders(providers)
+    const mini = models.find((model) => model.id === 'openai/gpt-4o-mini')!
+    assert.equal(mini.name, 'GPT-4o mini')
+    assert.equal(mini.provider, 'OpenAI')
+    assert.equal(mini.input, 0.15)
+    assert.equal(mini.output, 0.6)
+    assert.equal(mini.context, 128_000)
+    assert.equal(mini.image, undefined)
+  })
+
+  it('skips unpriced models (absence of cost is not free)', () => {
+    const models = normalizeModelsDevProviders(providers)
+    assert.equal(models.some((model) => model.id === 'openai/unpriced-slug'), false)
+  })
+
+  it('sorts by provider name then model id', () => {
+    const models = normalizeModelsDevProviders(providers)
+    assert.deepEqual(
+      models.map((model) => model.id),
+      ['anthropic/claude-3.5-haiku', 'openai/gpt-4o-mini'],
+    )
+  })
+
+  it('returns [] for an empty provider map', () => {
+    assert.deepEqual(normalizeModelsDevProviders({}), [])
   })
 })
 

@@ -30,16 +30,17 @@ function parseLimit(value: string): number | undefined {
 export function modelsCommand(program: Command): void {
   program
     .command('models')
-    .description('List model pricing (live from OpenRouter, or the offline catalog with --offline)')
+    .description('List model pricing (live from OpenRouter, models.dev with --source, or the offline catalog)')
     .argument('[search]', 'filter by model id or name')
     .option('-p, --provider <name>', 'only show models from a provider')
     .option('-s, --sort <field>', 'sort by price, provider, or id (default: provider)', 'provider')
     .option('-l, --limit <n>', 'limit the number of rows', parseLimit)
     .option('-f, --featured', 'show only the curated featured models')
-    .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
+    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
+    .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed (alias for --source offline)')
     .option('-j, --json', 'output raw JSON')
-    .action(async (search: string | undefined, options: { provider?: string; sort: string; limit?: number; featured?: boolean; offline?: boolean; json?: boolean }) => {
-      const list = await resolveModelList(Boolean(options.offline))
+    .action(async (search: string | undefined, options: { provider?: string; sort: string; limit?: number; featured?: boolean; source?: string; offline?: boolean; json?: boolean }) => {
+      const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
       let models: LiveModel[] = options.featured ? featuredModels(list.models) : list.models
 
       if (search) {

@@ -98,12 +98,15 @@ export interface Projection {
 }
 
 /** Where a model list came from. */
-export type PricingSource = 'live' | 'offline'
+export type PricingSource = 'live' | 'modelsdev' | 'offline'
 
 /** A model list plus provenance metadata. */
 export interface ModelList {
   source: PricingSource
-  /** ISO timestamp of when the live feed was fetched; `null` for the offline catalog. */
+  /**
+   * ISO timestamp of when the live feed was fetched; `null` for the offline
+   * catalog.
+   */
   fetchedAt: string | null
   models: LiveModel[]
 }

@@ -24,7 +24,7 @@ export function imageEstimateCommand(program: Command): void {
         offline?: boolean
         json?: boolean
       }) => {
-        const list = await resolveModelList(Boolean(options.offline))
+        const list = await resolveModelList({ offline: Boolean(options.offline) })
         const { scenario } = await buildImageScenario({
           model: options.model,
           users: options.users,

@@ -42,7 +42,7 @@ export function imagesCommand(program: Command): void {
     .option('-j, --json', 'output raw JSON')
     .action(
       async (search: string | undefined, options: { provider?: string; sort: string; limit?: number; featured?: boolean; offline?: boolean; json?: boolean }) => {
-        const list = await resolveModelList(Boolean(options.offline))
+        const list = await resolveModelList({ offline: Boolean(options.offline) })
         let models: LiveModel[] = options.featured ? featuredImageModels(list.models) : list.models.filter((model) => model.image !== undefined)
 
         if (search) {

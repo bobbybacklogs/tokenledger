@@ -1,6 +1,6 @@
 # @tokenledger/core
 
-AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter, scenario projections, and tier math. Zero runtime dependencies, works in Node ≥ 20 and in the browser.
+AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter and models.dev, scenario projections, and tier math. One runtime dependency (`mdev-sdk`, itself zero-dependency); works in Node ≥ 20 and in the browser.
 
 ## Install
 
@@ -30,10 +30,12 @@ console.log(projection.spend, projection.revenue, projection.margin)
 
 | Export | Description |
 | --- | --- |
-| `loadModels(options?)` | `Promise<ModelList>` — live OpenRouter feed with offline fallback. Never throws; check `list.source` (`'live'` \| `'offline'`). |
-| `fetchModels(options?)` | `Promise<ModelList>` — live fetch only; throws on network/HTTP errors. |
+| `loadModels(options?)` | `Promise<ModelList>` — live OpenRouter feed by default, models.dev with `{ source: 'modelsdev' }`, offline fallback. Never throws; check `list.source` (`'live'` \| `'modelsdev'` \| `'offline'`). |
+| `fetchModels(options?)` | `Promise<ModelList>` — live OpenRouter fetch only; throws on network/HTTP errors. |
+| `fetchModelsDev(options?)` | `Promise<ModelList>` — live models.dev fetch only (via `mdev-sdk`); throws on network/HTTP errors. |
 | `catalogModels()` | `ModelList` — the bundled estimate catalog (token + image lanes). |
 | `normalizeOpenRouterModels(payload)` | Normalize a raw OpenRouter `/api/v1/models` payload into `LiveModel[]`. |
+| `normalizeModelsDevProviders(providers)` | Normalize a models.dev `ProviderMap` into `LiveModel[]` (prices already USD/1M; unpriced models skipped). |
 | `featuredModels(models, opts?)` | The curated benchmark set (pinned ids first, optional offline backfill, capped). |
 | `featuredImageModels(models, opts?)` | Like `featuredModels`, but only image-capable models (per-image pricing). |
 | `isImageModel(model)` | True when a model has per-image output pricing. |
@@ -60,7 +62,11 @@ console.log(projection.spend, projection.revenue, projection.margin)
 
 ## Pricing source
 
-`fetchModels` calls `https://openrouter.ai/api/v1/models` (no API key). Prices arrive per token and are converted to per-1M-token values. Models without a usable prompt/completion price are skipped. When the network is unavailable, `loadModels` returns the bundled catalog (all entries flagged `estimate: true`) so callers can still run projections — but always surface `list.source` to your users.
+`fetchModels` calls `https://openrouter.ai/api/v1/models` (no API key). Prices arrive per token and are converted to per-1M-token values. Models without a usable prompt/completion price are skipped.
+
+`fetchModelsDev` calls the public [models.dev](https://models.dev) catalog via `mdev-sdk` (no API key) — the same open catalog of providers, models, and prices that powers OpenCode. Prices are already USD per 1M tokens; models without a `cost` are unpriced (absence ≠ free) and are skipped, mirroring the OpenRouter skip. Canonical model ids are `provider/model`, and provider display names come from the catalog itself. models.dev does not publish per-image pricing, so the image lane is only populated by OpenRouter data.
+
+When neither live feed is reachable, `loadModels` returns the bundled catalog (all entries flagged `estimate: true`) so callers can still run projections — but always surface `list.source` to your users.
 
 Image-capable models also expose `image` (USD per generated image). OpenRouter's feed reports `image_output` scaled ×1000, so TokenLedger converts it to per-image USD (e.g. GPT-5 Image lists `0.00004` → `$0.04/image`).
 

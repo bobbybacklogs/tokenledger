@@ -19,6 +19,7 @@ export function estimateCommand(program: Command): void {
     .option('-t, --tier <spec>', 'add a tier: Name:users:price:inputTokens:outputTokens:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
+    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-j, --json', 'output raw JSON')
     .action(
       async (options: {
@@ -27,9 +28,10 @@ export function estimateCommand(program: Command): void {
         tier?: string[]
         tiers?: string
         offline?: boolean
+        source?: string
         json?: boolean
       }) => {
-        const list = await resolveModelList(Boolean(options.offline))
+        const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
         const { scenario } = await buildScenario({
           model: options.model,
           users: options.users,
@@ -49,13 +51,14 @@ export function scenarioCommand(program: Command): void {
     .option('-m, --model <id>', 'override the scenario model')
     .option('-u, --users <n>', 'override total users', parseNumber)
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
+    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-j, --json', 'output raw JSON')
     .action(
       async (
         file: string,
-        options: { model?: string; users?: string; offline?: boolean; json?: boolean },
+        options: { model?: string; users?: string; offline?: boolean; source?: string; json?: boolean },
       ) => {
-        const list = await resolveModelList(Boolean(options.offline))
+        const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
         const scenario = await parseScenarioFile(file, options)
         await runProjection(list, scenario, { json: Boolean(options.json), model: options.model })
       },

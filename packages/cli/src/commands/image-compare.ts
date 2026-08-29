@@ -65,7 +65,7 @@ export function imageCompareCommand(program: Command): void {
           json?: boolean
         },
       ) => {
-        const list: ModelList = await resolveModelList(Boolean(options.offline))
+        const list: ModelList = await resolveModelList({ offline: Boolean(options.offline) })
         const limit = options.limit ?? 8
         const { scenario } = await buildImageScenario({
           scenario: options.scenario,
