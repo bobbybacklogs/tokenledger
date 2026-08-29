@@ -61,6 +61,17 @@ tokenledger compare openai/gpt-4o-mini "~google/gemini-flash-latest"
 tokenledger compare --scenario scenario.json --limit 10
 ```
 
+Compare models across different pricing sources by passing a comma-separated `--source` list that maps positionally to each model. `default` means OpenRouter:
+
+```
+tokenledger compare openai/gpt-4o-mini openai/gpt-4o-mini --source models.dev,default
+tokenledger compare openai/gpt-4o-mini anthropic/claude-3.5-haiku --source models.dev,offline
+```
+
+A single value (e.g. `--source models.dev`) applies to every model. When the comparison mixes sources, a **Source** column appears and each model is priced against its own catalog.
+
+Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --users <n>`, `-l, --limit <n>`, `--source <openrouter|models.dev|offline|default,...>`, `-o, --offline`, `-j, --json`.
+
 ### `tokenledger init [file]`
 
 Scaffold a starter scenario JSON (the bundled Growth plan):
@@ -148,6 +159,8 @@ Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --
 By default every command hits the public OpenRouter models endpoint (`https://openrouter.ai/api/v1/models`) — no API key.
 
 With `--source models.dev`, the token-lane commands (`models`, `estimate`, `scenario`, `compare`, `wizard`) use the models.dev public catalog instead (`https://models.dev`, via `mdev-sdk`) — the same open catalog of providers, models, and prices that powers OpenCode. It carries ~7,000⁺ priced models with provider display names from the catalog itself.
+
+`compare` also accepts a **per-model source list**: `--source models.dev,default` prices the first model from models.dev and the second from OpenRouter (`default` = OpenRouter), each row showing its Source column.
 
 If a live feed is unreachable, the CLI falls back to the bundled estimate catalog and tells you so. Use `--offline` (alias for `--source offline`) to force the bundled catalog. Image-lane commands (`images`, `image-estimate`, `image-compare`) run on OpenRouter or the offline catalog only — models.dev does not publish per-image prices.
 

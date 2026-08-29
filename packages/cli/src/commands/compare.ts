@@ -11,10 +11,19 @@ import {
 import pc from 'picocolors'
 import type { Command } from 'commander'
 import { renderTable, type Column } from '../table.js'
-import { buildScenario, resolveModelList, sourceLine } from '../helpers.js'
+import {
+  buildScenario,
+  loadListForSource,
+  parseSourceSpec,
+  resolvePerModelSources,
+  sourceLabel,
+  sourceLine,
+  type SourceChoice,
+} from '../helpers.js'
 
 interface CompareRow {
   model: LiveModel
+  source: SourceChoice
   projection: Projection
 }
 
@@ -30,6 +39,9 @@ const compareColumns: Column<CompareRow>[] = [
   { header: 'Gross margin', align: 'right', value: (row) => row.projection.margin.toFixed(1) + '%' },
 ]
 
+// Only shown when the comparison mixes more than one pricing source.
+const sourceColumn: Column<CompareRow> = { header: 'Source', value: (row) => sourceLabel(row.source) }
+
 const collect = (value: string, previous: string[]): string[] => previous.concat([value])
 
 export function compareCommand(program: Command): void {
@@ -42,7 +54,7 @@ export function compareCommand(program: Command): void {
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
-    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
+    .option('--source <sources>', 'pricing source per model: comma-separated openrouter, models.dev, offline, or default (default = openrouter)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('-j, --json', 'output raw JSON')
     .action(
@@ -59,8 +71,9 @@ export function compareCommand(program: Command): void {
           json?: boolean
         },
       ) => {
-        const list: ModelList = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
         const limit = options.limit ?? 8
+        const spec = parseSourceSpec(options.source)
+        const offline = Boolean(options.offline)
         const { scenario } = await buildScenario({
           scenario: options.scenario,
           users: options.users,
@@ -68,17 +81,39 @@ export function compareCommand(program: Command): void {
           tiersFile: options.tiers,
         })
 
-        const queries = modelArgs && modelArgs.length > 0 ? modelArgs : featuredModels(list.models, { max: limit }).map((m) => m.id)
+        // Decide which models to compare and the source that prices each one.
+        let queries: string[]
+        let perSource: SourceChoice[]
+        if (modelArgs && modelArgs.length > 0) {
+          queries = modelArgs
+          perSource = resolvePerModelSources(queries.length, spec, offline)
+        } else {
+          const first: SourceChoice = offline ? 'offline' : (spec?.[0] ?? 'openrouter')
+          const primary = await loadListForSource(first)
+          queries = featuredModels(primary.models, { max: limit }).map((m) => m.id)
+          perSource = Array<SourceChoice>(queries.length).fill(first)
+        }
+
+        // Load each distinct source's catalog once and cache it.
+        const lists = new Map<SourceChoice, ModelList>()
+        for (const source of new Set(perSource)) {
+          if (!lists.has(source)) lists.set(source, await loadListForSource(source))
+        }
 
         const results: CompareRow[] = []
         const skipped: string[] = []
-        for (const query of queries) {
+        const entries: Array<{ query: string; source: SourceChoice }> = queries.map((query, i) => ({
+          query,
+          source: perSource[i] ?? perSource[perSource.length - 1] ?? 'openrouter',
+        }))
+        for (const { query, source } of entries) {
+          const list = lists.get(source)!
           const model = findModel(list.models, query)
           if (!model) {
             skipped.push(query)
             continue
           }
-          results.push({ model, projection: calculateScenario(scenario, model) })
+          results.push({ model, source, projection: calculateScenario(scenario, model) })
         }
         results.sort((a, b) => a.projection.spend - b.projection.spend)
 
@@ -86,11 +121,13 @@ export function compareCommand(program: Command): void {
           process.stdout.write(
             JSON.stringify(
               {
-                source: list.source,
-                fetchedAt: list.fetchedAt,
                 scenario,
                 skipped,
-                results: results.map(({ model, projection }) => ({ model, projection })),
+                results: results.map(({ model, source, projection }) => ({
+                  source: sourceLabel(source),
+                  model,
+                  projection,
+                })),
               },
               null,
               2,
@@ -108,9 +145,17 @@ export function compareCommand(program: Command): void {
           process.stderr.write(pc.yellow(`Skipped unknown model: ${skippedModel}\n`))
         }
 
+        const distinctSources = [...new Set(results.map((r) => r.source))]
+        const columns =
+          distinctSources.length > 1 ? [...compareColumns, sourceColumn] : compareColumns
+        const sourceSummary =
+          distinctSources.length === 1
+            ? sourceLine(lists.get(distinctSources[0]!)!)
+            : distinctSources.map((s) => sourceLabel(s)).join(', ')
+
         process.stdout.write('\n' + pc.bold(`Scenario: ${scenario.name}`) + '\n\n')
-        process.stdout.write(renderTable(results, compareColumns) + '\n')
-        process.stdout.write('Pricing source: ' + sourceLine(list) + '\n\n')
+        process.stdout.write(renderTable(results, columns) + '\n')
+        process.stdout.write('Pricing source: ' + sourceSummary + '\n\n')
         if (skipped.length > 0) process.stdout.write(pc.yellow(`${skipped.length} model(s) not found.`) + '\n\n')
       },
     )

@@ -202,6 +202,7 @@ export async function loadScenarioFile(path: string): Promise<{ scenario: Scenar
 export type SourceChoice = 'openrouter' | 'modelsdev' | 'offline'
 
 const SOURCE_NAMES: Record<string, SourceChoice> = {
+  default: 'openrouter',
   openrouter: 'openrouter',
   live: 'openrouter',
   'models.dev': 'modelsdev',
@@ -243,6 +244,55 @@ export function sourceLine(list: ModelList): string {
     return pc.green('models.dev pricing') + pc.dim(` · ${list.models.length.toLocaleString()} models`) + pc.dim(` · fetched ${list.fetchedAt}`)
   }
   return pc.yellow('offline estimates') + pc.dim(` · bundled catalog · ${list.models.length.toLocaleString()} models`)
+}
+
+/** Short human label for a source, used in per-row source columns. */
+export function sourceLabel(source: SourceChoice): string {
+  switch (source) {
+    case 'modelsdev':
+      return 'models.dev'
+    case 'offline':
+      return 'offline'
+    default:
+      return 'OpenRouter'
+  }
+}
+
+/**
+ * Parse a comma-separated `--source` list (e.g. `models.dev,default`).
+ * `default` means OpenRouter. Returns `undefined` when nothing was given.
+ * Exits with a message on an unknown source.
+ */
+export function parseSourceSpec(spec?: string): SourceChoice[] | undefined {
+  if (!spec || !spec.trim()) return undefined
+  return spec.split(',').map((part) => {
+    const raw = part.trim().toLowerCase()
+    const choice = SOURCE_NAMES[raw]
+    if (!choice) {
+      process.stderr.write(
+        pc.red(`Unknown source "${part.trim()}". Use one of: openrouter, models.dev, offline (or "default" for OpenRouter).\n`),
+      )
+      process.exit(1)
+    }
+    return choice
+  })
+}
+
+/**
+ * Assign a source to each of `count` models. A single `--source` value applies
+ * to every model; a longer list maps positionally and its last value fills the
+ * remainder. `--offline` forces everything offline.
+ */
+export function resolvePerModelSources(count: number, spec?: SourceChoice[], offline?: boolean): SourceChoice[] {
+  if (offline) return Array<SourceChoice>(count).fill('offline')
+  if (!spec || spec.length === 0) return Array<SourceChoice>(count).fill('openrouter')
+  return Array.from({ length: count }, (_, i) => spec[Math.min(i, spec.length - 1)]!)
+}
+
+/** Load a model list for a single source choice. */
+export async function loadListForSource(source: SourceChoice): Promise<ModelList> {
+  if (source === 'offline') return catalogModels()
+  return loadModels({ source })
 }
 
 export function modelHeader(model: LiveModel): string {

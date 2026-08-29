@@ -87,6 +87,8 @@ tokenledger scenario my-scenario.json --json
 # Compare models on the same scenario
 tokenledger compare openai/gpt-4o-mini "~google/gemini-flash-latest"
 tokenledger compare --scenario my-scenario.json --limit 10
+# Compare the same model across pricing sources (default = OpenRouter)
+tokenledger compare openai/gpt-4o-mini openai/gpt-4o-mini --source models.dev,default
 
 # Build a scenario interactively (no JSON needed)
 tokenledger wizard
