@@ -52,8 +52,9 @@ export function compareCommand(program: Command): void {
     .description('Compare multiple models against the same scenario')
     .argument('[models...]', 'model ids to compare (defaults to the curated featured set)')
     .option('--scenario <file>', 'scenario JSON file to compare against')
-    .option('-t, --tier <spec>', 'add a tier: Name:users:price:inputTokens:outputTokens:quota (repeatable)', collect, [])
+    .option('-t, --tier <spec>', 'add a tier — usage: Name:users:price:requests, or tokens: Name:users:price:input:output:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
+    .option('-z, --size <name>', 'exchange size for usage-style tiers: brief, standard, detailed, intensive (default: standard)')
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
     .option('-k, --category <name>', 'with no model ids, compare models of this category: general, coding, reasoning, vision, image, embedding, audio')
@@ -72,6 +73,7 @@ export function compareCommand(program: Command): void {
           category?: string
           offline?: boolean
           source?: string
+          size?: string
           json?: boolean
         },
       ) => {
@@ -84,6 +86,7 @@ export function compareCommand(program: Command): void {
           users: options.users,
           tierSpecs: options.tier,
           tiersFile: options.tiers,
+          size: options.size,
         })
 
         // Decide which models to compare and the source that prices each one.

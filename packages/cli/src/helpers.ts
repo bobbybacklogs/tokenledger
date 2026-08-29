@@ -1,12 +1,16 @@
 import {
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
+  EXCHANGE_ESTIMATES,
+  EXCHANGE_SIZES,
   catalogModels,
   defaultImageScenario,
   defaultScenario,
   findModel,
   loadModels,
   matchesCategory,
+  tierFromUsage,
+  type ExchangeSize,
   type LiveModel,
   type ModelCategory,
   type ModelList,
@@ -28,28 +32,88 @@ export function requireModel(list: ModelList, query?: string): LiveModel {
   return model
 }
 
-function readTierSpec(spec: string): TierConfig {
+const EXCHANGE_ALIASES: Record<string, ExchangeSize> = {
+  brief: 'brief',
+  short: 'brief',
+  quick: 'brief',
+  standard: 'standard',
+  normal: 'standard',
+  regular: 'standard',
+  default: 'standard',
+  detailed: 'detailed',
+  deep: 'detailed',
+  long: 'detailed',
+  intensive: 'intensive',
+  heavy: 'intensive',
+  max: 'intensive',
+}
+
+/** Resolve a `--size <name>` exchange-size preset, defaulting to `standard`. */
+export function resolveExchangeSize(spec?: string): ExchangeSize {
+  if (!spec || !spec.trim()) return 'standard'
+  const raw = spec.trim().toLowerCase()
+  const size = EXCHANGE_ALIASES[raw]
+  if (size) return size
+  process.stderr.write(
+    pc.red(`Unknown exchange size "${spec}". Use one of: ${EXCHANGE_SIZES.join(', ')}.\n`),
+  )
+  process.exit(1)
+}
+
+/** A short description of an exchange size, e.g. "standard — typical chat". */
+export function exchangeSizeHint(size: ExchangeSize): string {
+  const estimate = EXCHANGE_ESTIMATES[size]
+  return `${estimate.label} (${estimate.description})`
+}
+
+/**
+ * Parse a token-lane tier spec.
+ *
+ * Two formats are supported:
+ * - Usage (business-friendly): `Name:users:price:requests` — tokens are
+ *   derived from requests/month × the exchange-size preset.
+ * - Raw tokens (advanced): `Name:users:price:inputTokens:outputTokens:quota`.
+ */
+function readTierSpec(spec: string, exchangeSize: ExchangeSize): TierConfig {
   const parts = spec.split(':')
-  if (parts.length < 5 || parts.length > 6) {
-    process.stderr.write(
-      pc.red(`Invalid tier spec "${spec}". Expected Name:users:price:inputTokens:outputTokens:quota\n`),
-    )
-    process.exit(1)
+  const [name, usersRaw, priceRaw, aRaw, bRaw, cRaw] = parts
+
+  // Usage format: Name:users:price:requests
+  if (parts.length === 4) {
+    const users = Number(usersRaw)
+    const price = Number(priceRaw)
+    const requests = Number(aRaw)
+    if (!name || [users, price, requests].some((value) => !Number.isFinite(value) || value < 0)) {
+      process.stderr.write(pc.red(`Invalid usage tier spec "${spec}". Expected Name:users:price:requests\n`))
+      process.exit(1)
+    }
+    const { input, output, quota } = tierFromUsage({ requestsPerUserPerMonth: requests, exchangeSize })
+    return { name, users, price, input, output, quota }
   }
-  const [name, usersRaw, priceRaw, inputRaw, outputRaw, quotaRaw] = parts
-  const users = Number(usersRaw)
-  const price = Number(priceRaw)
-  const input = Number(inputRaw)
-  const output = Number(outputRaw)
-  const quota = quotaRaw === undefined ? 0 : Number(quotaRaw)
-  if (
-    !name ||
-    [users, price, input, output, quota].some((value) => !Number.isFinite(value) || value < 0)
-  ) {
-    process.stderr.write(pc.red(`Invalid tier spec "${spec}". Expected Name:users:price:inputTokens:outputTokens:quota\n`))
-    process.exit(1)
+
+  // Raw token format: Name:users:price:input:output:quota
+  if (parts.length === 6) {
+    const users = Number(usersRaw)
+    const price = Number(priceRaw)
+    const input = Number(aRaw)
+    const output = Number(bRaw)
+    const quota = Number(cRaw)
+    if (
+      !name ||
+      [users, price, input, output, quota].some((value) => !Number.isFinite(value) || value < 0)
+    ) {
+      process.stderr.write(pc.red(`Invalid tier spec "${spec}". Expected Name:users:price:inputTokens:outputTokens:quota\n`))
+      process.exit(1)
+    }
+    return { name, users, price, input, output, quota }
   }
-  return { name, users, price, input, output, quota }
+
+  process.stderr.write(
+    pc.red(
+      `Invalid tier spec "${spec}". Expected usage format Name:users:price:requests or token format Name:users:price:inputTokens:outputTokens:quota\n`,
+    ),
+  )
+  process.exit(1)
 }
 
 /** Parse an image-lane tier spec: `Name:users:price:imagesPerUser[:quota]`. */
@@ -75,9 +139,12 @@ function readImageTierSpec(spec: string): TierConfig {
 }
 
 /** Load tiers from --tier specs, a JSON file, or fall back to the defaults. */
-export async function resolveTiers(options: { tier?: string[]; tiers?: string }): Promise<TierConfig[]> {
-  if (options.tiers) return readTierFile(options.tiers)
-  if (options.tier && options.tier.length > 0) return options.tier.map(readTierSpec)
+export async function resolveTiers(
+  options: { tier?: string[]; tiers?: string },
+  exchangeSize: ExchangeSize,
+): Promise<TierConfig[]> {
+  if (options.tiers) return readTierFile(options.tiers, exchangeSize)
+  if (options.tier && options.tier.length > 0) return options.tier.map((spec) => readTierSpec(spec, exchangeSize))
   return defaultScenario().tiers
 }
 
@@ -88,7 +155,7 @@ export async function resolveImageTiers(options: { tier?: string[]; tiers?: stri
   return defaultImageScenario().tiers
 }
 
-async function readTierFile(path: string): Promise<TierConfig[]> {
+async function readTierFile(path: string, exchangeSize?: ExchangeSize): Promise<TierConfig[]> {
   const fs = await import('node:fs/promises')
   let raw: string
   try {
@@ -108,11 +175,10 @@ async function readTierFile(path: string): Promise<TierConfig[]> {
     process.stderr.write(pc.red(`Tiers file "${path}" must contain a JSON array of tier objects.\n`))
     process.exit(1)
   }
-  const tiers = parsed.map((item, index) => normalizeTier(item, index))
-  return tiers
+  return parsed.map((item, index) => normalizeTier(item, index, exchangeSize))
 }
 
-function normalizeTier(value: unknown, index: number): TierConfig {
+function normalizeTier(value: unknown, index: number, exchangeSize?: ExchangeSize): TierConfig {
   const item = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>
   const name = typeof item.name === 'string' && item.name ? item.name : `Tier ${index + 1}`
   const asNum = (key: string) => (typeof item[key] === 'number' ? (item[key] as number) : Number(item[key] ?? NaN))
@@ -120,8 +186,27 @@ function normalizeTier(value: unknown, index: number): TierConfig {
   const price = asNum('price')
   const input = asNum('input')
   const output = asNum('output')
-  const quota = item.quota === undefined ? 0 : asNum('quota')
-  const tier: TierConfig = { name, users, price, input, output, quota }
+  const requests = asNum('requests')
+
+  let quota: number
+  // A tier can be described in business terms with `requests` (plus an
+  // optional `size` preset) instead of raw input/output token counts.
+  if (!Number.isFinite(input) && !Number.isFinite(output) && Number.isFinite(requests)) {
+    const size = exchangeSize ?? (typeof item.size === 'string' ? resolveExchangeSize(item.size) : 'standard')
+    const computed = tierFromUsage({ requestsPerUserPerMonth: requests, exchangeSize: size })
+    quota = item.quota === undefined ? computed.quota : asNum('quota')
+    return { name, users, price, input: computed.input, output: computed.output, quota }
+  }
+
+  quota = item.quota === undefined ? 0 : asNum('quota')
+  const tier: TierConfig = {
+    name,
+    users,
+    price,
+    input: Number.isFinite(input) ? input : 0,
+    output: Number.isFinite(output) ? output : 0,
+    quota,
+  }
   if (item.images !== undefined) tier.images = asNum('images')
   return tier
 }
@@ -133,13 +218,16 @@ export interface ScenarioSource {
   tierSpecs?: string[]
   tiersFile?: string
   name?: string
+  /** Exchange-size preset for usage-style tier specs. */
+  size?: string
 }
 
 /** Build a scenario from CLI flags + a scenario file (optionally). */
 export async function buildScenario(options: ScenarioSource): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
   if (options.scenario) return loadScenarioFile(options.scenario)
 
-  const tiers = await resolveTiers({ tier: options.tierSpecs, tiers: options.tiersFile })
+  const exchangeSize = resolveExchangeSize(options.size)
+  const tiers = await resolveTiers({ tier: options.tierSpecs, tiers: options.tiersFile }, exchangeSize)
   const usingDefaultTiers = !options.tierSpecs?.length && !options.tiersFile
   const defaultBase = usingDefaultTiers ? defaultScenario() : null
   const users = options.users !== undefined ? Number(options.users) : defaultBase?.users
@@ -196,7 +284,7 @@ export async function loadScenarioFile(path: string): Promise<{ scenario: Scenar
   const name = typeof item.name === 'string' && item.name ? item.name : 'Scenario'
   const model = typeof item.model === 'string' && item.model ? item.model : DEFAULT_MODEL_ID
   const users = typeof item.users === 'number' ? item.users : undefined
-  const tiers = (item.tiers as unknown[]).map(normalizeTier)
+  const tiers = (item.tiers as unknown[]).map((value, index) => normalizeTier(value, index))
   return { scenario: { name, model, ...(users !== undefined ? { users } : {}), tiers }, fromDefaults: false }
 }
 

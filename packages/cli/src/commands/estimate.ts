@@ -16,8 +16,9 @@ export function estimateCommand(program: Command): void {
     .description('Project AI spend, revenue, and margin for a model and tier mix')
     .option('-m, --model <id>', 'model id (OpenRouter-style, e.g. openai/gpt-4o-mini)')
     .option('-u, --users <n>', 'total users; per-tier splits scale proportionally')
-    .option('-t, --tier <spec>', 'add a tier: Name:users:price:inputTokens:outputTokens:quota (repeatable)', collect, [])
+    .option('-t, --tier <spec>', 'add a tier — usage: Name:users:price:requests, or tokens: Name:users:price:input:output:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
+    .option('-z, --size <name>', 'exchange size for usage-style tiers: brief, standard, detailed, intensive (default: standard)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-j, --json', 'output raw JSON')
@@ -27,6 +28,7 @@ export function estimateCommand(program: Command): void {
         users?: string
         tier?: string[]
         tiers?: string
+        size?: string
         offline?: boolean
         source?: string
         json?: boolean
@@ -37,6 +39,7 @@ export function estimateCommand(program: Command): void {
           users: options.users,
           tierSpecs: options.tier,
           tiersFile: options.tiers,
+          size: options.size,
         })
         await runProjection(list, scenario, { json: Boolean(options.json), model: options.model })
       },
