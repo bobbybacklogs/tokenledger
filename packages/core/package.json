@@ -1,7 +1,7 @@
 {
   "name": "@tokenledger/core",
-  "version": "0.1.1",
-  "description": "AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter, scenario projections, and tier math.",
+  "version": "0.2.0",
+  "description": "AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter and models.dev, scenario projections, and tier math.",
   "keywords": [
     "ai",
     "llm",
@@ -9,7 +9,8 @@
     "pricing",
     "unit-economics",
     "cost",
-    "openrouter"
+    "openrouter",
+    "models.dev"
   ],
   "license": "MIT",
   "type": "module",

@@ -1,7 +1,7 @@
 {
   "name": "@tokenledger/cli",
-  "version": "0.1.1",
-  "description": "TokenLedger CLI: live LLM pricing (OpenRouter) and AI unit-economics projections from the terminal.",
+  "version": "0.2.0",
+  "description": "TokenLedger CLI: live LLM pricing (OpenRouter / models.dev) and AI unit-economics projections from the terminal.",
   "keywords": [
     "ai",
     "llm",
@@ -10,7 +10,8 @@
     "unit-economics",
     "cost",
     "cli",
-    "openrouter"
+    "openrouter",
+    "models.dev"
   ],
   "license": "MIT",
   "type": "module",
