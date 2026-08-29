@@ -32,9 +32,21 @@ tokenledger models --sort context              # largest context windows first
 tokenledger models --json
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>` (default provider), `-l, --limit <n>`, `-k, --category <general|coding|reasoning|vision|image|embedding|audio>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>` (default provider), `-l, --limit <n>`, `-k, --category <general|coding|reasoning|vision|image|embedding|audio>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `--search <term>`, `-o, --offline`, `-j, --json`.
 
 Categories are inferred from a model's id/name (plus modality and per-image pricing when available): `general` (text), `coding`, `reasoning`, `vision` (image input), `image` (image generation), `embedding`, `audio`.
+
+### `tokenledger search <term>`
+
+Same as `models <term>` — search the catalog by id or name. Handy if `search` is easier to remember than the positional form.
+
+```
+tokenledger search gpt-4o
+tokenledger search claude --source models.dev
+tokenledger search coder -k coding --sort price -l 5
+```
+
+Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>`, `-l, --limit <n>`, `-k, --category <name>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
 
 ### `tokenledger estimate`
 

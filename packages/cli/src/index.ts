@@ -7,7 +7,7 @@ import { imageCompareCommand } from './commands/image-compare.js'
 import { imageEstimateCommand } from './commands/image-estimate.js'
 import { imagesCommand } from './commands/images.js'
 import { initCommand } from './commands/init.js'
-import { modelsCommand } from './commands/models.js'
+import { modelsCommand, searchCommand } from './commands/models.js'
 import { wizardCommand } from './commands/wizard.js'
 
 const require = createRequire(import.meta.url)
@@ -21,6 +21,7 @@ program
   .version(pkg.version)
 
 modelsCommand(program)
+searchCommand(program)
 imagesCommand(program)
 estimateCommand(program)
 imageEstimateCommand(program)

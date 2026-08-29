@@ -73,6 +73,7 @@ tokenledger models
 tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
 tokenledger models --source models.dev "claude-opus"     # models.dev catalog instead
+tokenledger search gpt-4o                                 # dedicated search command
 tokenledger models --featured --offline     # no network, bundled estimates
 
 # Project AI spend / revenue / margin for a model and tier mix
