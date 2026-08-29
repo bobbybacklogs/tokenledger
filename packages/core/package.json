@@ -1,6 +1,6 @@
 {
   "name": "@tokenledger/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter, scenario projections, and tier math.",
   "keywords": [
     "ai",
