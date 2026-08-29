@@ -34,6 +34,13 @@ export default function Page() {
     document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  const updateUserBase = (value: string) => {
+    const nextUsers = Math.max(0, Number(value) || 0)
+    const previousUsers = users || 1
+    setUsers(nextUsers)
+    setTiers((current) => current.map((tier) => ({ ...tier, users: Math.round((tier.users / previousUsers) * nextUsers) })))
+  }
+
   const totals = useMemo(() => {
     const spend = tiers.reduce((sum, tier) => sum + tier.users * ((tier.input / 1000000) * activeModel.input + (tier.output / 1000000) * activeModel.output), 0)
     const revenue = tiers.reduce((sum, tier) => sum + tier.users * tier.price, 0)
@@ -71,7 +78,7 @@ export default function Page() {
         <header className="topbar flex min-h-20 items-center justify-between border-b border-border px-6 py-4 lg:px-10"><div><div className="flex items-center gap-2 text-xs text-muted-foreground"><span>Workspace</span><span>/</span><span className="text-foreground">Cost planner</span></div><h1 className="mt-1 text-xl font-semibold tracking-tight">Scenario: <span className="text-primary">Growth plan</span></h1></div><div className="flex items-center gap-3"><button className="icon-button" aria-label="Help"><CircleHelp /></button><button className="outline-button" onClick={() => window.print()}><FileText /> Print report</button><button className="primary-button" onClick={exportCsv}><Download /> Export CSV</button></div></header>
 
         <div className="mx-auto max-w-[1400px] px-6 py-8 lg:px-10">
-          <div className="mb-8 flex flex-wrap items-end justify-between gap-5"><div><p className="eyebrow">AI UNIT ECONOMICS</p><h2 className="display-title">Know your cost<br /><em>before</em> you scale.</h2><p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Model your AI spend across providers, tune usage by tier, and protect your margins with dynamic quotas.</p></div><div className="assumption-bar"><Settings2 /><div><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active model</p><select value={selected} onChange={(e) => setSelected(e.target.value)} className="bg-transparent text-sm font-semibold outline-none"><option>{models[0].name}</option>{models.slice(1).map((model) => <option key={model.name}>{model.name}</option>)}</select></div><ChevronDown className="size-4 text-muted-foreground" /></div></div>
+          <div className="mb-8 flex flex-wrap items-end justify-between gap-5"><div><p className="eyebrow">AI UNIT ECONOMICS</p><h2 className="display-title">Know your cost<br /><em>before</em> you scale.</h2><p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground">Model your AI spend across providers, tune usage by tier, and protect your margins with dynamic quotas.</p></div><div className="flex flex-wrap items-center gap-3"><div className="assumption-bar"><Settings2 /><div><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active model</p><select value={selected} onChange={(e) => setSelected(e.target.value)} className="bg-transparent text-sm font-semibold outline-none"><option>{models[0].name}</option>{models.slice(1).map((model) => <option key={model.name}>{model.name}</option>)}</select></div><ChevronDown className="size-4 text-muted-foreground" /></div><label className="assumption-bar"><div><p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SaaS users</p><div className="flex items-center gap-1 font-mono text-sm font-semibold"><input aria-label="SaaS users" type="number" min="0" value={users} onChange={(e) => updateUserBase(e.target.value)} className="w-20 bg-transparent outline-none" /><span className="text-xs text-muted-foreground">total</span></div></div></label></div></div>
 
           <div id="overview" className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4"><Kpi label="Monthly AI spend" value={money(totals.spend)} change="12.4%" down /><Kpi label="Blended cost / user" value={money(totals.weightedCost)} change="vs. last scenario" /><Kpi label="Projected revenue" value={money(totals.revenue)} change={`${users.toLocaleString()} users`} /><Kpi label="Gross margin" value={`${totals.margin.toFixed(1)}%`} change="Healthy range" /></div>
 
