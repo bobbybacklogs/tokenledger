@@ -25,10 +25,16 @@ tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
 tokenledger models --source models.dev "claude-opus"
 tokenledger models --featured
+tokenledger models -k coding --sort price      # cheapest coding models
+tokenledger models -k reasoning -s price -l 10 # cheapest reasoning models
+tokenledger models -k vision                   # vision-capable models
+tokenledger models --sort context              # largest context windows first
 tokenledger models --json
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|provider|id>` (default provider), `-l, --limit <n>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>` (default provider), `-l, --limit <n>`, `-k, --category <general|coding|reasoning|vision|image|embedding|audio>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+
+Categories are inferred from a model's id/name (plus modality and per-image pricing when available): `general` (text), `coding`, `reasoning`, `vision` (image input), `image` (image generation), `embedding`, `audio`.
 
 ### `tokenledger estimate`
 
@@ -70,7 +76,7 @@ tokenledger compare openai/gpt-4o-mini anthropic/claude-3.5-haiku --source model
 
 A single value (e.g. `--source models.dev`) applies to every model. When the comparison mixes sources, a **Source** column appears and each model is priced against its own catalog.
 
-Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --users <n>`, `-l, --limit <n>`, `--source <openrouter|models.dev|offline|default,...>`, `-o, --offline`, `-j, --json`.
+Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --users <n>`, `-l, --limit <n>`, `-k, --category <name>`, `--source <openrouter|models.dev|offline|default,...>`, `-o, --offline`, `-j, --json`. With `-k, --category`, the default featured set is narrowed to that category (e.g. `compare -k coding` compares coding models).
 
 ### `tokenledger init [file]`
 

@@ -13,8 +13,10 @@ import type { Command } from 'commander'
 import { renderTable, type Column } from '../table.js'
 import {
   buildScenario,
+  filterByCategory,
   loadListForSource,
   parseSourceSpec,
+  resolveCategory,
   resolvePerModelSources,
   sourceLabel,
   sourceLine,
@@ -54,6 +56,7 @@ export function compareCommand(program: Command): void {
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
+    .option('-k, --category <name>', 'with no model ids, compare models of this category: general, coding, reasoning, vision, image, embedding, audio')
     .option('--source <sources>', 'pricing source per model: comma-separated openrouter, models.dev, offline, or default (default = openrouter)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('-j, --json', 'output raw JSON')
@@ -66,6 +69,7 @@ export function compareCommand(program: Command): void {
           tiers?: string
           users?: string
           limit?: number
+          category?: string
           offline?: boolean
           source?: string
           json?: boolean
@@ -74,6 +78,7 @@ export function compareCommand(program: Command): void {
         const limit = options.limit ?? 8
         const spec = parseSourceSpec(options.source)
         const offline = Boolean(options.offline)
+        const category = resolveCategory(options.category)
         const { scenario } = await buildScenario({
           scenario: options.scenario,
           users: options.users,
@@ -90,7 +95,7 @@ export function compareCommand(program: Command): void {
         } else {
           const first: SourceChoice = offline ? 'offline' : (spec?.[0] ?? 'openrouter')
           const primary = await loadListForSource(first)
-          queries = featuredModels(primary.models, { max: limit }).map((m) => m.id)
+          queries = featuredModels(filterByCategory(primary.models, category), { max: limit }).map((m) => m.id)
           perSource = Array<SourceChoice>(queries.length).fill(first)
         }
 

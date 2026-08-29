@@ -36,6 +36,9 @@ console.log(projection.spend, projection.revenue, projection.margin)
 | `catalogModels()` | `ModelList` — the bundled estimate catalog (token + image lanes). |
 | `normalizeOpenRouterModels(payload)` | Normalize a raw OpenRouter `/api/v1/models` payload into `LiveModel[]`. |
 | `normalizeModelsDevProviders(providers)` | Normalize a models.dev `ProviderMap` into `LiveModel[]` (prices already USD/1M; unpriced models skipped). |
+| `categorizeModel(model)` | Infer a coarse category for a model: `general` \| `coding` \| `reasoning` \| `vision` \| `image` \| `embedding` \| `audio` (heuristic on id/name/modality/image). |
+| `matchesCategory(model, category)` | True when a model falls into the given category. |
+| `MODEL_CATEGORIES` | The ordered list of supported categories. |
 | `featuredModels(models, opts?)` | The curated benchmark set (pinned ids first, optional offline backfill, capped). |
 | `featuredImageModels(models, opts?)` | Like `featuredModels`, but only image-capable models (per-image pricing). |
 | `isImageModel(model)` | True when a model has per-image output pricing. |

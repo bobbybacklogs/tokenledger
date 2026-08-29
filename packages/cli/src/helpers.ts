@@ -6,7 +6,9 @@ import {
   defaultScenario,
   findModel,
   loadModels,
+  matchesCategory,
   type LiveModel,
+  type ModelCategory,
   type ModelList,
   type Scenario,
   type TierConfig,
@@ -295,6 +297,47 @@ export function resolvePerModelSources(count: number, spec?: SourceChoice[], off
 export async function loadListForSource(source: SourceChoice): Promise<ModelList> {
   if (source === 'offline') return catalogModels()
   return loadModels({ source })
+}
+
+const CATEGORY_ALIASES: Record<string, ModelCategory> = {
+  general: 'general',
+  text: 'general',
+  coding: 'coding',
+  code: 'coding',
+  coder: 'coding',
+  reasoning: 'reasoning',
+  think: 'reasoning',
+  thinking: 'reasoning',
+  vision: 'vision',
+  multimodal: 'vision',
+  image: 'image',
+  imagegen: 'image',
+  images: 'image',
+  embedding: 'embedding',
+  embeddings: 'embedding',
+  audio: 'audio',
+  speech: 'audio',
+}
+
+/** Resolve a `--category <name>` value to a category, or `undefined` if none. */
+export function resolveCategory(spec?: string): ModelCategory | undefined {
+  if (!spec || !spec.trim()) return undefined
+  const raw = spec.trim().toLowerCase()
+  const category = CATEGORY_ALIASES[raw]
+  if (category) return category
+  process.stderr.write(
+    pc.red(`Unknown category "${spec}". Use one of: general, coding, reasoning, vision, image, embedding, audio.\n`),
+  )
+  process.exit(1)
+}
+
+/** Filter a model list down to one category (no-op when category is undefined). */
+export function filterByCategory(
+  models: readonly LiveModel[],
+  category: ModelCategory | undefined,
+): LiveModel[] {
+  if (!category) return [...models]
+  return models.filter((model) => matchesCategory(model, category))
 }
 
 export function modelHeader(model: LiveModel): string {

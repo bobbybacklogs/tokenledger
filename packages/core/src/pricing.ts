@@ -130,6 +130,14 @@ export function normalizeModelsDevProviders(providers: ProviderMap): LiveModel[]
       const context = model.limit?.context && model.limit.context > 0 ? model.limit.context : 0
       const id = `${provider.id}/${model.id}`.trim().replace(/\/+$/, '')
       if (!id) continue
+      // Retain the modality string (OpenRouter-style "input+image->output") so
+      // vision/audio category detection works for the models.dev catalog too.
+      const inputModality = Array.isArray(model.modalities?.input) ? model.modalities!.input : []
+      const outputModality = Array.isArray(model.modalities?.output) ? model.modalities!.output : []
+      const modality =
+        inputModality.length > 0 || outputModality.length > 0
+          ? `${inputModality.join('+')}->${outputModality.join('+')}`
+          : undefined
       models.push({
         id,
         name: (model.name || id).trim(),
@@ -137,6 +145,7 @@ export function normalizeModelsDevProviders(providers: ProviderMap): LiveModel[]
         input: roundPrice(cost.input),
         output: roundPrice(cost.output),
         context,
+        ...(modality ? { modality } : {}),
       })
     }
   }

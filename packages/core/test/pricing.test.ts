@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 
 import {
   CATALOG_MODELS,
+  categorizeModel,
   featuredImageModels,
   featuredModels,
   findModel,
@@ -204,6 +205,13 @@ describe('normalizeModelsDevProviders', () => {
     assert.equal(mini.output, 0.6)
     assert.equal(mini.context, 128_000)
     assert.equal(mini.image, undefined)
+  })
+
+  it('retains the modality string for vision/audio detection', () => {
+    const models = normalizeModelsDevProviders(providers)
+    const haiku = models.find((model) => model.id === 'anthropic/claude-3.5-haiku')!
+    assert.equal(haiku.modality, 'text+image->text')
+    assert.equal(categorizeModel(haiku), 'vision')
   })
 
   it('skips unpriced models (absence of cost is not free)', () => {

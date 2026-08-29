@@ -2,7 +2,7 @@ import { contextLabel, featuredModels, money, type LiveModel } from '@tokenledge
 import pc from 'picocolors'
 import type { Command } from 'commander'
 import { renderTable, type Column } from '../table.js'
-import { resolveModelList, sourceLine } from '../helpers.js'
+import { filterByCategory, resolveCategory, resolveModelList, sourceLine } from '../helpers.js'
 
 interface ModelRow {
   id: string
@@ -33,15 +33,18 @@ export function modelsCommand(program: Command): void {
     .description('List model pricing (live from OpenRouter, models.dev with --source, or the offline catalog)')
     .argument('[search]', 'filter by model id or name')
     .option('-p, --provider <name>', 'only show models from a provider')
-    .option('-s, --sort <field>', 'sort by price, provider, or id (default: provider)', 'provider')
+    .option('-s, --sort <field>', 'sort by price, output, context, provider, or id (default: provider)', 'provider')
     .option('-l, --limit <n>', 'limit the number of rows', parseLimit)
+    .option('-k, --category <name>', 'filter by category: general, coding, reasoning, vision, image, embedding, audio')
     .option('-f, --featured', 'show only the curated featured models')
     .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed (alias for --source offline)')
     .option('-j, --json', 'output raw JSON')
-    .action(async (search: string | undefined, options: { provider?: string; sort: string; limit?: number; featured?: boolean; source?: string; offline?: boolean; json?: boolean }) => {
+    .action(async (search: string | undefined, options: { provider?: string; sort: string; limit?: number; category?: string; featured?: boolean; source?: string; offline?: boolean; json?: boolean }) => {
       const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
-      let models: LiveModel[] = options.featured ? featuredModels(list.models) : list.models
+      const category = resolveCategory(options.category)
+      let models = filterByCategory(list.models, category)
+      if (options.featured) models = featuredModels(models)
 
       if (search) {
         const query = search.toLowerCase()
@@ -82,6 +85,10 @@ function sortModels(models: LiveModel[], field: string): LiveModel[] {
   switch (field) {
     case 'price':
       return sorted.sort((a, b) => a.input - b.input || a.output - b.output || a.id.localeCompare(b.id))
+    case 'output':
+      return sorted.sort((a, b) => a.output - b.output || a.input - b.input || a.id.localeCompare(b.id))
+    case 'context':
+      return sorted.sort((a, b) => b.context - a.context || a.input - b.input || a.id.localeCompare(b.id))
     case 'id':
       return sorted.sort((a, b) => a.id.localeCompare(b.id))
     case 'provider':
