@@ -69,6 +69,20 @@ tokenledger init                           # writes scenario.json
 tokenledger init my-plan.json -m openai/gpt-4o-mini
 ```
 
+### `tokenledger wizard`
+
+Build a scenario interactively, step by step — **no JSON required**. Every question shows a `[default]`; press Enter to accept it.
+
+```
+tokenledger wizard
+tokenledger wizard --offline
+tokenledger wizard --name "Launch plan" --file launch.json
+```
+
+Flow: scenario name → token or image lane → model (type an id, or a search term like `claude` to choose from matches) → total users (0 to keep tier counts as-is) → number of tiers → per-tier users, price, and tokens+quota (or images per user) → live projection → save to a scenario JSON file.
+
+Options: `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
+
 ### `tokenledger images [search]`
 
 List **image-generation model pricing** (USD per generated image) — live from OpenRouter, or the bundled catalog with `--offline`.

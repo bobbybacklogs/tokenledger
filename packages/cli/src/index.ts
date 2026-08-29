@@ -8,6 +8,7 @@ import { imageEstimateCommand } from './commands/image-estimate.js'
 import { imagesCommand } from './commands/images.js'
 import { initCommand } from './commands/init.js'
 import { modelsCommand } from './commands/models.js'
+import { wizardCommand } from './commands/wizard.js'
 
 const require = createRequire(import.meta.url)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -27,6 +28,7 @@ scenarioCommand(program)
 compareCommand(program)
 imageCompareCommand(program)
 initCommand(program)
+wizardCommand(program)
 
 program.parseAsync().catch((error: unknown) => {
   process.stderr.write(`Error: ${error instanceof Error ? error.message : String(error)}\n`)

@@ -86,6 +86,10 @@ tokenledger scenario my-scenario.json --json
 tokenledger compare openai/gpt-4o-mini "~google/gemini-flash-latest"
 tokenledger compare --scenario my-scenario.json --limit 10
 
+# Build a scenario interactively (no JSON needed)
+tokenledger wizard
+tokenledger wizard --offline
+
 # Image lane: price per generated image, projected, and benchmarked
 tokenledger images
 tokenledger image-estimate -m openai/gpt-5-image
