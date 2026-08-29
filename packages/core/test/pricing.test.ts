@@ -56,6 +56,14 @@ const PAYLOAD = {
       architecture: { modality: 'text+image->text+image' },
       pricing: { prompt: '0.000002', completion: '0.000002', image_output: '0' },
     },
+    {
+      // variable-priced router: OpenRouter's "-1" sentinel means "no fixed
+      // price" (it routes across providers) -> skipped, not $-1M garbage
+      id: 'openrouter/auto',
+      name: 'Auto Router',
+      context_length: 2000000,
+      pricing: { prompt: '-1', completion: '-1' },
+    },
   ],
 }
 
@@ -79,6 +87,11 @@ describe('normalizeOpenRouterModels', () => {
   it('skips models without usable pricing', () => {
     const models = normalizeOpenRouterModels(PAYLOAD)
     assert.equal(models.some((model) => model.id === 'weird/sampler'), false)
+  })
+
+  it('skips variable-priced routers OpenRouter flags with the -1 sentinel', () => {
+    const models = normalizeOpenRouterModels(PAYLOAD)
+    assert.equal(models.some((model) => model.id === 'openrouter/auto'), false)
   })
 
   it('derives providers and sorts the list', () => {

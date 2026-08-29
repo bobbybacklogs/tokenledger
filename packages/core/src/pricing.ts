@@ -62,7 +62,10 @@ export function normalizeOpenRouterModels(payload: unknown): LiveModel[] {
     const prompt = toNumber(pricing.prompt)
     const completion = toNumber(pricing.completion)
     // Models without an explicit prompt/completion price can't be quoted.
-    if (prompt === null || completion === null) continue
+    // OpenRouter marks variable-priced routers (openrouter/auto, auto-beta,
+    // bodybuilder, fusion, pareto-code, ...) with a `-1` sentinel instead of
+    // a real per-token price — skip those too.
+    if (prompt === null || completion === null || prompt < 0 || completion < 0) continue
 
     const context = typeof item.context_length === 'number' && item.context_length > 0 ? item.context_length : 0
     const name = typeof item.name === 'string' && item.name.trim() ? item.name.trim() : id
