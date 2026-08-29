@@ -259,18 +259,20 @@ export function sourceLabel(source: SourceChoice): string {
 }
 
 /**
- * Parse a comma-separated `--source` list (e.g. `models.dev,default`).
- * `default` means OpenRouter. Returns `undefined` when nothing was given.
- * Exits with a message on an unknown source.
+ * Parse a comma- or space-separated `--source` list (e.g. `models.dev,default`
+ * or `models.dev default`). `default` means OpenRouter. Returns `undefined`
+ * when nothing was given. Exits with a message on an unknown source.
  */
 export function parseSourceSpec(spec?: string): SourceChoice[] | undefined {
   if (!spec || !spec.trim()) return undefined
-  return spec.split(',').map((part) => {
-    const raw = part.trim().toLowerCase()
+  const parts = spec.split(/[\s,]+/).map((part) => part.trim()).filter(Boolean)
+  if (parts.length === 0) return undefined
+  return parts.map((part) => {
+    const raw = part.toLowerCase()
     const choice = SOURCE_NAMES[raw]
     if (!choice) {
       process.stderr.write(
-        pc.red(`Unknown source "${part.trim()}". Use one of: openrouter, models.dev, offline (or "default" for OpenRouter).\n`),
+        pc.red(`Unknown source "${part}". Use one of: openrouter, models.dev, offline (or "default" for OpenRouter).\n`),
       )
       process.exit(1)
     }

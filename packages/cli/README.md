@@ -61,7 +61,7 @@ tokenledger compare openai/gpt-4o-mini "~google/gemini-flash-latest"
 tokenledger compare --scenario scenario.json --limit 10
 ```
 
-Compare models across different pricing sources by passing a comma-separated `--source` list that maps positionally to each model. `default` means OpenRouter:
+Compare models across different pricing sources by passing a `--source` list (commas or spaces) that maps positionally to each model. `default` means OpenRouter:
 
 ```
 tokenledger compare openai/gpt-4o-mini openai/gpt-4o-mini --source models.dev,default
