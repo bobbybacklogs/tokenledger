@@ -26,7 +26,13 @@ export default function Page() {
   const [users, setUsers] = useState(12000)
   const [selected, setSelected] = useState('GPT-4o mini')
   const [tiers, setTiers] = useState(initialTiers)
+  const [activeSection, setActiveSection] = useState('overview')
   const activeModel = models.find((model) => model.name === selected) ?? models[0]
+
+  const goToSection = (section: string) => {
+    setActiveSection(section)
+    document.getElementById(section)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const totals = useMemo(() => {
     const spend = tiers.reduce((sum, tier) => sum + tier.users * ((tier.input / 1000000) * activeModel.input + (tier.output / 1000000) * activeModel.output), 0)
@@ -55,7 +61,7 @@ export default function Page() {
         <div className="flex items-center gap-3 px-2"><div className="brand-mark"><Zap /></div><span className="font-mono text-sm font-bold tracking-tight">TOKENLEDGER</span></div>
         <div className="mt-12 flex flex-col gap-2">
           <p className="nav-label">WORKSPACE</p>
-          <a className="nav-item active" href="#overview"><BarChart3 /> Overview</a><a className="nav-item" href="#models"><Layers3 /> Model costs</a><a className="nav-item" href="#tiers"><WalletCards /> Subscription tiers</a><a className="nav-item" href="#quotas"><Gauge /> Usage quotas</a>
+          <button className={`nav-item ${activeSection === 'overview' ? 'active' : ''}`} onClick={() => goToSection('overview')}><BarChart3 /> Overview</button><button className={`nav-item ${activeSection === 'models' ? 'active' : ''}`} onClick={() => goToSection('models')}><Layers3 /> Model costs</button><button className={`nav-item ${activeSection === 'tiers' ? 'active' : ''}`} onClick={() => goToSection('tiers')}><WalletCards /> Subscription tiers</button><button className={`nav-item ${activeSection === 'quotas' ? 'active' : ''}`} onClick={() => goToSection('quotas')}><Gauge /> Usage quotas</button>
           <p className="nav-label mt-8">TOOLS</p><button className="nav-item" onClick={exportCsv}><Download /> Export report</button><button className="nav-item" onClick={() => window.print()}><FileText /> Print budget</button>
         </div>
         <div className="mt-auto border-t border-border pt-5"><div className="flex items-center gap-3"><div className="avatar">AL</div><div><p className="text-xs font-semibold">Alex Lee</p><p className="text-[11px] text-muted-foreground">Growth workspace</p></div><MoreHorizontal className="ml-auto size-4 text-muted-foreground" /></div></div>
