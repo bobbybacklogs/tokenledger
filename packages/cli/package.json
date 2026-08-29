@@ -1,6 +1,6 @@
 {
   "name": "@tokenledger/cli",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "TokenLedger CLI: live LLM pricing (OpenRouter / models.dev) and AI unit-economics projections from the terminal.",
   "keywords": [
     "ai",
