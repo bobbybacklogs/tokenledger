@@ -7,8 +7,12 @@ import {
   featuredImageModels,
   featuredModels,
   findModel,
+  githubCopilotModels,
+  isEmbeddingModel,
+  isVideoModel,
   normalizeModelsDevProviders,
   normalizeOpenRouterModels,
+  normalizeVercelModels,
   providerFromId,
   type ProviderMap,
 } from '../dist/index.js'
@@ -20,7 +24,7 @@ const PAYLOAD = {
       id: 'openai/gpt-4o-mini',
       name: 'GPT-4o mini',
       context_length: 128000,
-      pricing: { prompt: '0.00000015', completion: '0.0000006' },
+      pricing: { prompt: '0.00000015', completion: '0.0000006', input_cache_read: '0.00000003' },
     },
     {
       // numeric pricing + name fallback
@@ -77,6 +81,7 @@ describe('normalizeOpenRouterModels', () => {
     assert.equal(mini.input, 0.15)
     assert.equal(mini.output, 0.6)
     assert.equal(mini.context, 128_000)
+    assert.equal(mini.cacheRead, 0.03)
   })
 
   it('handles numeric pricing and missing names', () => {
@@ -148,7 +153,7 @@ describe('normalizeModelsDevProviders', () => {
           modalities: { input: ['text'], output: ['text'] },
           open_weights: false,
           limit: { context: 128000, output: 16384 },
-          cost: { input: 0.15, output: 0.6 },
+          cost: { input: 0.15, output: 0.6, cache_read: 0.03 },
         },
         // unpriced: absence of cost is NOT free -> skipped
         'unpriced-slug': {
@@ -205,6 +210,7 @@ describe('normalizeModelsDevProviders', () => {
     assert.equal(mini.output, 0.6)
     assert.equal(mini.context, 128_000)
     assert.equal(mini.image, undefined)
+    assert.equal(mini.cacheRead, 0.03)
   })
 
   it('retains the modality string for vision/audio detection', () => {
@@ -232,12 +238,127 @@ describe('normalizeModelsDevProviders', () => {
   })
 })
 
+describe('normalizeVercelModels', () => {
+  const payload = {
+    object: 'list',
+    data: [
+      {
+        id: 'openai/gpt-5.6-sol',
+        name: 'GPT-5.6 Sol',
+        owned_by: 'openai',
+        context_window: 1_050_000,
+        type: 'language',
+        modalities: { input: ['text', 'image'], output: ['text'] },
+        pricing: { input: '0.000002', output: '0.00001', input_cache_read: '0.0000002' },
+      },
+      {
+        id: 'bfl/flux-kontext-max',
+        name: 'FLUX.1 Kontext Max',
+        owned_by: 'bfl',
+        context_window: 512,
+        type: 'image',
+        modalities: { input: ['text'], output: ['image'] },
+        pricing: { image: '0.08' },
+      },
+      {
+        id: 'bfl/flux-2-flex',
+        name: 'FLUX.2 flex',
+        owned_by: 'bfl',
+        type: 'image',
+        pricing: {},
+      },
+      {
+        id: 'perplexity/sonar',
+        name: 'Sonar',
+        owned_by: 'perplexity',
+        type: 'language',
+        pricing: {},
+      },
+      {
+        id: 'openai/text-embedding-3-small',
+        name: 'text-embedding-3-small',
+        owned_by: 'openai',
+        context_window: 8191,
+        type: 'embedding',
+        pricing: { input: '0.00000002' },
+      },
+      {
+        id: 'alibaba/wan-v2.6-t2v',
+        name: 'Wan v2.6 Text-to-Video',
+        owned_by: 'alibaba',
+        type: 'video',
+        pricing: {
+          video_duration_pricing: [
+            { resolution: '480p', cost_per_second: '0.05' },
+            { resolution: '720p', cost_per_second: '0.1' },
+          ],
+        },
+      },
+    ],
+  }
+
+  it('scales per-token pricing to per-1M-token values and keeps modality', () => {
+    const models = normalizeVercelModels(payload)
+    const sol = models.find((model) => model.id === 'openai/gpt-5.6-sol')!
+    assert.equal(sol.input, 2)
+    assert.equal(sol.output, 10)
+    assert.equal(sol.context, 1_050_000)
+    assert.equal(sol.provider, 'OpenAI')
+    assert.equal(sol.modality, 'text+image->text')
+    assert.equal(sol.cacheRead, 0.2)
+  })
+
+  it('keeps embedding input-only prices and 720p video-per-second rates', () => {
+    const models = normalizeVercelModels(payload)
+    const embed = models.find((model) => model.id === 'openai/text-embedding-3-small')!
+    assert.equal(embed.input, 0.02)
+    assert.equal(embed.output, 0)
+    assert.equal(isEmbeddingModel(embed), true)
+    const video = models.find((model) => model.id === 'alibaba/wan-v2.6-t2v')!
+    assert.equal(video.video, 0.1)
+    assert.equal(isVideoModel(video), true)
+  })
+
+  it('keeps per-image prices without inventing token rates', () => {
+    const models = normalizeVercelModels(payload)
+    const flux = models.find((model) => model.id === 'bfl/flux-kontext-max')!
+    assert.equal(flux.image, 0.08)
+    assert.equal(flux.input, 0)
+    assert.equal(flux.output, 0)
+    assert.equal(flux.provider, 'Black Forest Labs')
+  })
+
+  it('skips unpriced models', () => {
+    const models = normalizeVercelModels(payload)
+    assert.equal(models.some((model) => model.id === 'bfl/flux-2-flex'), false)
+    assert.equal(models.some((model) => model.id === 'perplexity/sonar'), false)
+  })
+
+  it('returns [] for a malformed payload', () => {
+    assert.deepEqual(normalizeVercelModels({ nope: true }), [])
+    assert.deepEqual(normalizeVercelModels(null), [])
+  })
+})
+
+describe('githubCopilotModels', () => {
+  it('keeps only github-copilot ids', () => {
+    const models = [
+      { id: 'github-copilot/gpt-5-mini', name: 'GPT-5 Mini', provider: 'GitHub Copilot', input: 0.25, output: 2, context: 264_000 },
+      { id: 'openai/gpt-5-mini', name: 'GPT-5 Mini', provider: 'OpenAI', input: 0.25, output: 2, context: 264_000 },
+    ]
+    const copilot = githubCopilotModels(models)
+    assert.deepEqual(copilot.map((model) => model.id), ['github-copilot/gpt-5-mini'])
+  })
+})
+
 describe('providerFromId', () => {
   it('maps known namespaces, strips aliases, and falls back to a capitalized slug', () => {
     assert.equal(providerFromId('openai/gpt-4o'), 'OpenAI')
     assert.equal(providerFromId('google/gemini-2.0-pro'), 'Google')
     assert.equal(providerFromId('mistralai/mistral-small'), 'Mistral')
     assert.equal(providerFromId('~anthropic/claude-haiku-latest'), 'Anthropic')
+    assert.equal(providerFromId('github-copilot/gpt-5-mini'), 'GitHub Copilot')
+    assert.equal(providerFromId('bfl/flux-kontext-max'), 'Black Forest Labs')
     assert.equal(providerFromId('acme/thing'), 'Acme')
   })
 })

@@ -78,3 +78,55 @@ export const FEATURED_IMAGE_MODEL_IDS = [
 
 /** Image-model id used when a scenario does not specify one. */
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-5-image'
+
+/**
+ * Bundled offline fallback catalog for the embeddings lane. Prices are
+ * approximate USD per 1M embedding tokens (`input`; `output` is 0). Every
+ * entry is flagged with `estimate: true`.
+ */
+export const CATALOG_EMBEDDING_MODELS: LiveModel[] = [
+  { id: 'openai/text-embedding-3-small', name: 'text-embedding-3-small', provider: 'OpenAI', input: 0.02, output: 0, context: 8_191, best: 'High-volume RAG' },
+  { id: 'openai/text-embedding-3-large', name: 'text-embedding-3-large', provider: 'OpenAI', input: 0.13, output: 0, context: 8_191, best: 'Higher-quality retrieval' },
+  { id: 'openai/text-embedding-ada-002', name: 'text-embedding-ada-002', provider: 'OpenAI', input: 0.1, output: 0, context: 8_191, best: 'Legacy embeddings' },
+  { id: 'google/gemini-embedding-001', name: 'Gemini Embedding 001', provider: 'Google', input: 0.15, output: 0, context: 2_048, best: 'Gemini RAG' },
+  { id: 'google/gemini-embedding-2', name: 'Gemini Embedding 2', provider: 'Google', input: 0.2, output: 0, context: 8_192, best: 'Multilingual retrieval' },
+  { id: 'alibaba/qwen3-embedding-8b', name: 'Qwen3 Embedding 8B', provider: 'Alibaba', input: 0.05, output: 0, context: 32_768, best: 'Open-weight RAG' },
+  { id: 'alibaba/qwen3-embedding-4b', name: 'Qwen3 Embedding 4B', provider: 'Alibaba', input: 0.02, output: 0, context: 32_768, best: 'Cheap document index' },
+].map((model) => ({ ...model, estimate: true }))
+
+export const FEATURED_EMBEDDING_MODEL_IDS = [
+  'openai/text-embedding-3-small',
+  'openai/text-embedding-3-large',
+  'google/gemini-embedding-001',
+  'google/gemini-embedding-2',
+  'alibaba/qwen3-embedding-8b',
+  'openai/text-embedding-ada-002',
+  'alibaba/qwen3-embedding-4b',
+]
+
+export const DEFAULT_EMBEDDING_MODEL_ID = 'openai/text-embedding-3-small'
+
+/**
+ * Bundled offline fallback catalog for the video lane. Prices are approximate
+ * USD per generated second (typically a 720p list rate). Every entry is
+ * flagged with `estimate: true`.
+ */
+export const CATALOG_VIDEO_MODELS: LiveModel[] = [
+  { id: 'alibaba/wan-v2.6-t2v', name: 'Wan v2.6 Text-to-Video', provider: 'Alibaba', input: 0, output: 0, context: 0, video: 0.1, best: 'Text to video' },
+  { id: 'alibaba/wan-v2.6-i2v', name: 'Wan v2.6 Image-to-Video', provider: 'Alibaba', input: 0, output: 0, context: 0, video: 0.1, best: 'Image to video' },
+  { id: 'alibaba/wan-v2.6-t2v-flash', name: 'Wan v2.6 Text-to-Video Flash', provider: 'Alibaba', input: 0, output: 0, context: 0, video: 0.05, best: 'Fast drafts' },
+  { id: 'alibaba/wan-v2.5-t2v-preview', name: 'Wan v2.5 Text-to-Video Preview', provider: 'Alibaba', input: 0, output: 0, context: 0, video: 0.1, best: '720p generation' },
+  { id: 'bytedance/seedance-2.0', name: 'Seedance 2.0', provider: 'ByteDance', input: 0, output: 0, context: 0, video: 0.12, best: 'Cinematic clips' },
+  { id: 'klingai/kling-v2.6', name: 'Kling v2.6', provider: 'Kling', input: 0, output: 0, context: 0, video: 0.14, best: 'Character-consistent video' },
+].map((model) => ({ ...model, estimate: true }))
+
+export const FEATURED_VIDEO_MODEL_IDS = [
+  'alibaba/wan-v2.6-t2v',
+  'alibaba/wan-v2.6-i2v',
+  'alibaba/wan-v2.6-t2v-flash',
+  'alibaba/wan-v2.5-t2v-preview',
+  'bytedance/seedance-2.0',
+  'klingai/kling-v2.6',
+]
+
+export const DEFAULT_VIDEO_MODEL_ID = 'alibaba/wan-v2.6-t2v'

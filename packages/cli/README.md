@@ -1,6 +1,6 @@
 # @tokenledger/cli
 
-Command-line AI unit economics for SaaS products. Pulls **live model pricing** from OpenRouter (or models.dev with `--source models.dev`) and projects AI spend, revenue, and gross margin for your subscription tiers.
+Command-line AI unit economics for SaaS products. Pulls **live model pricing** from OpenRouter (or models.dev / GitHub Copilot / Vercel AI Gateway with `--source`) and projects AI spend, revenue, and gross margin for your subscription tiers.
 
 ## Install
 
@@ -17,13 +17,15 @@ Requires Node.js ≥ 20.
 
 ### `tokenledger models [search]`
 
-List model pricing — live from OpenRouter (thousands of models), live from models.dev with `--source models.dev`, or the bundled estimate catalog with `--offline`.
+List model pricing — live from OpenRouter (thousands of models), live from models.dev / GitHub Copilot / Vercel AI Gateway with `--source`, or the bundled estimate catalog with `--offline`.
 
 ```
 tokenledger models
 tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
 tokenledger models --source models.dev "claude-opus"
+tokenledger models --source github
+tokenledger models --source vercel --sort price -l 10
 tokenledger models --featured
 tokenledger models -k coding --sort price      # cheapest coding models
 tokenledger models -k reasoning -s price -l 10 # cheapest reasoning models
@@ -32,7 +34,7 @@ tokenledger models --sort context              # largest context windows first
 tokenledger models --json
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>` (default provider), `-l, --limit <n>`, `-k, --category <general|coding|reasoning|vision|image|embedding|audio>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `--search <term>`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>` (default provider), `-l, --limit <n>`, `-k, --category <general|coding|reasoning|vision|image|embedding|audio>`, `-f, --featured`, `--source <openrouter|models.dev|github|vercel|offline>`, `--search <term>`, `-o, --offline`, `-j, --json`.
 
 Categories are inferred from a model's id/name (plus modality and per-image pricing when available): `general` (text), `coding`, `reasoning`, `vision` (image input), `image` (image generation), `embedding`, `audio`.
 
@@ -43,10 +45,11 @@ Same as `models <term>` — search the catalog by id or name. Handy if `search` 
 ```
 tokenledger search gpt-4o
 tokenledger search claude --source models.dev
+tokenledger search gpt-5 --source github
 tokenledger search coder -k coding --sort price -l 5
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>`, `-l, --limit <n>`, `-k, --category <name>`, `-f, --featured`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|output|context|provider|id>`, `-l, --limit <n>`, `-k, --category <name>`, `-f, --featured`, `--source <openrouter|models.dev|github|vercel|offline>`, `-o, --offline`, `-j, --json`.
 
 ### `tokenledger estimate`
 
@@ -58,7 +61,7 @@ tokenledger estimate -m openai/gpt-4o-mini -u 12000
 tokenledger estimate -t "Free:8000:0:18000:6000:25000" -t "Pro:3200:29:120000:40000:250000" -u 12000
 ```
 
-Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable — usage format `Name:users:price:requests`, or token format `Name:users:price:input:output:quota`), `-z, --size <short|medium|long|heavy|custom>` (default medium), `--input-per <n>` / `--output-per <n>` (per-exchange tokens when `--size custom`), `-f, --tiers <file>`, `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-j, --json`.
+Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable — usage format `Name:users:price:requests`, or token format `Name:users:price:input:output:quota`), `-z, --size <short|medium|long|heavy|custom>` (default medium), `--input-per <n>` / `--output-per <n>` (per-exchange tokens when `--size custom`), `-f, --tiers <file>`, `--source <openrouter|models.dev|github|vercel|offline>`, `-o, --offline`, `-j, --json`.
 
 Tiers can be written in **business terms** (requests per user per month, with an interaction-size preset) — no raw token counts needed. The derived per-exchange token assumption is printed above the projection. Example with the usage format:
 
@@ -93,11 +96,12 @@ Compare models across different pricing sources by passing a `--source` list (co
 ```
 tokenledger compare openai/gpt-4o-mini openai/gpt-4o-mini --source models.dev,default
 tokenledger compare openai/gpt-4o-mini anthropic/claude-3.5-haiku --source models.dev,offline
+tokenledger compare openai/gpt-5.6-sol github-copilot/gpt-5.6-sol --source vercel,github
 ```
 
 A single value (e.g. `--source models.dev`) applies to every model. When the comparison mixes sources, a **Source** column appears and each model is priced against its own catalog.
 
-Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --users <n>`, `-l, --limit <n>`, `-k, --category <name>`, `--source <openrouter|models.dev|offline|default,...>`, `-o, --offline`, `-j, --json`. With `-k, --category`, the default featured set is narrowed to that category (e.g. `compare -k coding` compares coding models).
+Options: `--scenario <file>`, `-t, --tier <spec>`, `-f, --tiers <file>`, `-u, --users <n>`, `-l, --limit <n>`, `-k, --category <name>`, `--source <openrouter|models.dev|github|vercel|offline|default,...>`, `-o, --offline`, `-j, --json`. With `-k, --category`, the default featured set is narrowed to that category (e.g. `compare -k coding` compares coding models).
 
 ### `tokenledger init [file]`
 
@@ -116,16 +120,18 @@ Build a scenario interactively, step by step — **no JSON required**. Every que
 tokenledger wizard
 tokenledger wizard --offline
 tokenledger wizard --source models.dev
+tokenledger wizard --source github
+tokenledger wizard --source vercel
 tokenledger wizard --name "Launch plan" --file launch.json
 ```
 
 Flow: scenario name → token or image lane → model (type an id, or a search term like `claude` to choose from matches) → total users (0 to keep tier counts as-is) → **interaction size** (Short/Medium/Long/Heavy, or Custom with your own per-exchange tokens) → number of tiers → per-tier users, price, and **requests per user / month** → live projection → save to a scenario JSON file. Token budgets are derived automatically from requests × interaction size, and the assumption is shown, so you never enter raw token counts.
 
-Options: `--source <openrouter|models.dev|offline>`, `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
+Options: `--source <openrouter|models.dev|github|vercel|offline>`, `-o, --offline`, `-n, --name <name>`, `-f, --file <file>`. To pipe/script answers, set `TOKENLEDGER_WIZARD_SCRIPT=1` (respects the non-interactive CLI guard).
 
 ### `tokenledger images [search]`
 
-List **image-generation model pricing** (USD per generated image) — live from OpenRouter, or the bundled catalog with `--offline`.
+List **image-generation model pricing** (USD per generated image) — live from OpenRouter (or Vercel with `--source vercel`), or the bundled catalog with `--offline`.
 
 ```
 tokenledger images
@@ -134,7 +140,7 @@ tokenledger images --featured
 tokenledger images --json
 ```
 
-Options: `-p, --provider <name>`, `-s, --sort <price|provider|id>`, `-l, --limit <n>`, `-f, --featured`, `-o, --offline`, `-j, --json`.
+Options: `-p, --provider <name>`, `-s, --sort <price|provider|id>`, `-l, --limit <n>`, `-f, --featured`, `--source <openrouter|vercel|offline>`, `-o, --offline`, `-j, --json`.
 
 ### `tokenledger image-estimate`
 
@@ -147,6 +153,41 @@ tokenledger image-estimate -t "Free:8000:0:5" -t "Pro:3200:29:100" -t "Business:
 ```
 
 Options: `-m, --model <id>`, `-u, --users <n>`, `-t, --tier <spec>` (repeatable, `Name:users:price:imagesPerUser:quota`), `-f, --tiers <file>`, `-o, --offline`, `-j, --json`.
+
+### `tokenledger embeddings [search]`
+
+List embedding model pricing (USD per 1M tokens). Best catalogs: `--source models.dev` or `--source vercel`.
+
+```
+tokenledger embeddings
+tokenledger embeddings --source models.dev --sort price -l 10
+tokenledger embed-estimate -m openai/text-embedding-3-small
+tokenledger embed-compare --limit 8
+```
+
+### `tokenledger videos [search]`
+
+List video-generation pricing (USD per generated second, typically the 720p list rate from Vercel).
+
+```
+tokenledger videos --source vercel
+tokenledger video-estimate -m alibaba/wan-v2.6-t2v
+tokenledger video-compare --limit 8
+```
+
+Token-lane cache hits: `tokenledger estimate --cache-hit 40` applies a 40% prompt-cache hit rate (uses each model's `cacheRead` price).
+
+### `tokenledger credits`
+
+Included monthly credits, per-model burn, optional overage budget, and reset timing.
+
+```
+tokenledger credits
+tokenledger credits -m openai/gpt-4o-mini --credit-value 0.01 --multiplier 1 --reset monthly
+tokenledger credits -t "Pro:3200:29:1000:500:10:0.015" --size medium
+```
+
+Burn: `credits = (list AI $ × multiplier) / creditValue`. Included credits are prepaid; **effective AI cost = overage only**. Overage budget is per user; `0` = hard stop (no billed overage). `--reset monthly|weekly|never` + `--reset-day` + `--as-of` drive days-to-reset.
 
 ### `tokenledger image-compare [models...]`
 
@@ -202,9 +243,13 @@ By default every command hits the public OpenRouter models endpoint (`https://op
 
 With `--source models.dev`, the token-lane commands (`models`, `estimate`, `scenario`, `compare`, `wizard`) use the models.dev public catalog instead (`https://models.dev`, via `mdev-sdk`) — the same open catalog of providers, models, and prices that powers OpenCode. It carries ~7,000⁺ priced models with provider display names from the catalog itself.
 
+`--source github` loads the GitHub Copilot slice of models.dev (`github-copilot/<model>`). GitHub Models (the playground / inference catalog) was retired in July 2026; Copilot is the remaining GitHub-hosted list with public prices.
+
+`--source vercel` loads Vercel AI Gateway (`https://ai-gateway.vercel.sh/v1/models`, no API key). Language prices are per token (scaled to USD/1M); image models quote USD per generated image, so the image lane works here too.
+
 `compare` also accepts a **per-model source list**: `--source models.dev,default` prices the first model from models.dev and the second from OpenRouter (`default` = OpenRouter), each row showing its Source column.
 
-If a live feed is unreachable, the CLI falls back to the bundled estimate catalog and tells you so. Use `--offline` (alias for `--source offline`) to force the bundled catalog. Image-lane commands (`images`, `image-estimate`, `image-compare`) run on OpenRouter or the offline catalog only — models.dev does not publish per-image prices.
+If a live feed is unreachable, the CLI falls back to the bundled estimate catalog and tells you so. Use `--offline` (alias for `--source offline`) to force the bundled catalog. Image-lane commands (`images`, `image-estimate`, `image-compare`) run on OpenRouter, Vercel, or the offline catalog — models.dev and GitHub Copilot do not publish per-image prices.
 
 ## Output
 

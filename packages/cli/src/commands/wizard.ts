@@ -1,14 +1,22 @@
 import { createInterface, type Interface } from 'node:readline'
 import {
+  DEFAULT_EMBEDDING_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_ID,
   EXCHANGE_PRESETS,
   PRESET_SIZES,
+  calculateEmbeddingScenario,
   calculateImageScenario,
   calculateScenario,
+  calculateVideoScenario,
+  defaultEmbeddingScenario,
   defaultImageScenario,
   defaultScenario,
+  defaultVideoScenario,
+  isEmbeddingModel,
   isImageModel,
+  isVideoModel,
   money,
   tierFromUsage,
   type ExchangeSize,
@@ -19,10 +27,10 @@ import {
 } from '@tokenledger/core'
 import type { Command } from 'commander'
 import pc from 'picocolors'
-import { resolveModelList, sourceLine, type ExchangeConfig } from '../helpers.js'
-import { renderImageProjection, renderProjection } from '../render.js'
+import { resolveModelList, SOURCE_OPTION_HELP, sourceLine, type ExchangeConfig } from '../helpers.js'
+import { renderEmbeddingProjection, renderImageProjection, renderProjection, renderVideoProjection } from '../render.js'
 
-type Lane = 'tokens' | 'images'
+type Lane = 'tokens' | 'images' | 'embeddings' | 'video'
 
 /** Reads answers one line at a time; queued input is never dropped. */
 interface Prompter {
@@ -39,7 +47,7 @@ export function wizardCommand(program: Command): void {
     .command('wizard')
     .description('Build a scenario interactively, step by step (no JSON needed)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
-    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
+    .option('--source <name>', SOURCE_OPTION_HELP)
     .option('-n, --name <name>', 'pre-set the scenario name')
     .option('-f, --file <file>', 'pre-set the file to save the scenario to')
     .action(async (options: { offline?: boolean; source?: string; name?: string; file?: string }) => {
@@ -84,7 +92,7 @@ export function wizardCommand(program: Command): void {
 
         const name = await ask('Scenario name', options.name ?? 'My plan')
         const lane = await chooseLane(prompter)
-        process.stdout.write('\n' + pc.cyan(lane === 'tokens' ? '── Model ──' : '── Image model ──') + '\n')
+        process.stdout.write('\n' + pc.cyan(laneHeading(lane)) + '\n')
         const model = await pickModel(prompter, list, lane)
         process.stdout.write(pc.dim(`  Chosen: ${model.id}\n`))
 
@@ -103,8 +111,23 @@ export function wizardCommand(program: Command): void {
           tiers,
         }
 
-        const projection = lane === 'tokens' ? calculateScenario(scenario, model) : calculateImageScenario(scenario, model)
-        process.stdout.write('\n' + (lane === 'tokens' ? renderProjection(projection) : renderImageProjection(projection)) + '\n')
+        const projection =
+          lane === 'tokens'
+            ? calculateScenario(scenario, model)
+            : lane === 'images'
+              ? calculateImageScenario(scenario, model)
+              : lane === 'embeddings'
+                ? calculateEmbeddingScenario(scenario, model)
+                : calculateVideoScenario(scenario, model)
+        const rendered =
+          lane === 'tokens'
+            ? renderProjection(projection)
+            : lane === 'images'
+              ? renderImageProjection(projection)
+              : lane === 'embeddings'
+                ? renderEmbeddingProjection(projection)
+                : renderVideoProjection(projection)
+        process.stdout.write('\n' + rendered + '\n')
         process.stdout.write('Pricing source: ' + sourceLine(list) + '\n')
 
         await maybeSave(prompter, scenario, options.file)
@@ -128,16 +151,33 @@ async function askPositiveNumber(p: Prompter, text: string, fallback: number, ki
   }
 }
 
+function laneHeading(lane: Lane): string {
+  switch (lane) {
+    case 'images':
+      return '── Image model ──'
+    case 'embeddings':
+      return '── Embedding model ──'
+    case 'video':
+      return '── Video model ──'
+    default:
+      return '── Model ──'
+  }
+}
+
 async function chooseLane(p: Prompter): Promise<Lane> {
   process.stdout.write('\n' + pc.cyan('── What to model ──') + '\n')
-  process.stdout.write('  1. Token costs — LLM tokens used per user per month\n')
+  process.stdout.write('  1. Token costs — LLM tokens used per user per month (optional cache-hit %)\n')
   process.stdout.write('  2. Image generation — images generated per user per month\n')
+  process.stdout.write('  3. Embeddings — embedding tokens per user per month\n')
+  process.stdout.write('  4. Video generation — generated seconds per user per month\n')
   for (;;) {
     const raw = await p.ask('What do you want to model?', '1')
     const value = raw.trim().toLowerCase()
     if (value === '1' || value.startsWith('token')) return 'tokens'
     if (value === '2' || value.startsWith('image')) return 'images'
-    process.stdout.write(pc.red('  Pick 1 (token costs) or 2 (image generation).\n'))
+    if (value === '3' || value.startsWith('embed')) return 'embeddings'
+    if (value === '4' || value.startsWith('video')) return 'video'
+    process.stdout.write(pc.red('  Pick 1 (tokens), 2 (images), 3 (embeddings), or 4 (video).\n'))
   }
 }
 
@@ -163,8 +203,15 @@ async function askTierCount(p: Prompter): Promise<number> {
   }
 }
 
+function defaultTiersFor(lane: Lane): TierConfig[] {
+  if (lane === 'images') return defaultImageScenario().tiers
+  if (lane === 'embeddings') return defaultEmbeddingScenario().tiers
+  if (lane === 'video') return defaultVideoScenario().tiers
+  return defaultScenario().tiers
+}
+
 async function collectTiers(p: Prompter, count: number, lane: Lane, config: ExchangeConfig): Promise<TierConfig[]> {
-  const defaults = (lane === 'images' ? defaultImageScenario() : defaultScenario()).tiers
+  const defaults = defaultTiersFor(lane)
   const fallback: TierConfig =
     defaults[defaults.length - 1] ?? { name: 'Tier', users: 1000, price: 0, input: 18_000, output: 6_000, quota: 25_000 }
   const tiers: TierConfig[] = []
@@ -176,6 +223,7 @@ async function collectTiers(p: Prompter, count: number, lane: Lane, config: Exch
     const price = await askNumber(p, '  Subscription price per user / month ($)', base.price)
     if (lane === 'tokens') {
       const requests = await askNumber(p, '  Requests per user / month', 300)
+      const cacheHit = await askNumber(p, '  Prompt-cache hit rate %', base.cacheHit ?? 0)
       const { input, output, quota } = tierFromUsage({
         requestsPerUserPerMonth: requests,
         exchangeSize: config.size,
@@ -183,13 +231,19 @@ async function collectTiers(p: Prompter, count: number, lane: Lane, config: Exch
           ? { inputTokensPerExchange: config.inputTokens, outputTokensPerExchange: config.outputTokens }
           : {}),
       })
-      tiers.push({ name, users, price, input, output, quota })
+      tiers.push({ name, users, price, input, output, quota, cacheHit })
       process.stdout.write(
         pc.dim(`  → ${input.toLocaleString()} in / ${output.toLocaleString()} out / ${quota.toLocaleString()} quota tokens per user / month\n`),
       )
-    } else {
+    } else if (lane === 'images') {
       const images = await askNumber(p, '  Images per user / month', base.images ?? 0)
       tiers.push({ name, users, price, input: 0, output: 0, quota: 0, images })
+    } else if (lane === 'embeddings') {
+      const embedTokens = await askNumber(p, '  Embedding tokens per user / month', base.embedTokens ?? 0)
+      tiers.push({ name, users, price, input: 0, output: 0, quota: 0, embedTokens })
+    } else {
+      const videoSeconds = await askNumber(p, '  Video seconds per user / month', base.videoSeconds ?? 0)
+      tiers.push({ name, users, price, input: 0, output: 0, quota: 0, videoSeconds })
     }
   }
   return tiers
@@ -246,33 +300,47 @@ async function chooseExchangeSize(p: Prompter): Promise<ExchangeConfig> {
   }
 }
 
+function laneFilter(lane: Lane): (model: LiveModel) => boolean {
+  if (lane === 'images') return isImageModel
+  if (lane === 'embeddings') return isEmbeddingModel
+  if (lane === 'video') return isVideoModel
+  return () => true
+}
+
+function laneDefaultId(lane: Lane, pool: readonly LiveModel[]): string | undefined {
+  if (lane === 'images') return pool.some((m) => m.id === DEFAULT_IMAGE_MODEL_ID) ? DEFAULT_IMAGE_MODEL_ID : pool.find(isImageModel)?.id
+  if (lane === 'embeddings') return pool.some((m) => m.id === DEFAULT_EMBEDDING_MODEL_ID) ? DEFAULT_EMBEDDING_MODEL_ID : pool.find(isEmbeddingModel)?.id
+  if (lane === 'video') return pool.some((m) => m.id === DEFAULT_VIDEO_MODEL_ID) ? DEFAULT_VIDEO_MODEL_ID : pool.find(isVideoModel)?.id
+  return pool.some((m) => m.id === DEFAULT_MODEL_ID) ? DEFAULT_MODEL_ID : pool[0]?.id
+}
+
+function lanePrice(lane: Lane, model: LiveModel): string {
+  if (lane === 'images') return `${money(model.image ?? 0)}/image`
+  if (lane === 'embeddings') return `${money(model.input)}/1M`
+  if (lane === 'video') return `${money(model.video ?? 0)}/s`
+  return `${money(model.input)} / ${money(model.output)}`
+}
+
 async function pickModel(p: Prompter, list: ModelList, lane: Lane): Promise<LiveModel> {
   const pool = list.models
-  const defaultId =
-    lane === 'images'
-      ? pool.some((m) => m.id === DEFAULT_IMAGE_MODEL_ID)
-        ? DEFAULT_IMAGE_MODEL_ID
-        : pool.find(isImageModel)?.id
-      : pool.some((m) => m.id === DEFAULT_MODEL_ID)
-        ? DEFAULT_MODEL_ID
-        : pool[0]?.id
+  const defaultId = laneDefaultId(lane, pool)
   if (!defaultId) {
-    process.stderr.write(pc.red(`No ${lane === 'images' ? 'image ' : ''}models available — run "tokenledger models" or retry without --offline.\n`))
+    process.stderr.write(pc.red(`No ${lane} models available — run "tokenledger models" or retry without --offline.\n`))
     process.exit(1)
   }
 
-  const label = lane === 'images' ? 'Image model id or search' : 'Model id or search'
+  const label = lane === 'tokens' ? 'Model id or search' : `${lane[0]!.toUpperCase()}${lane.slice(1)} model id or search`
+  const filter = laneFilter(lane)
   for (;;) {
     const raw = await p.ask(label, defaultId)
     const q = raw.trim().toLowerCase()
-    // Exact id or name selects immediately; anything vaguer goes through the picker.
     const exact = pool.find((m) => m.id.toLowerCase() === q) ?? pool.find((m) => m.name.toLowerCase() === q)
     if (exact) {
-      if (lane === 'tokens' || exact.image !== undefined) return exact
-      process.stdout.write(pc.yellow(`  "${exact.id}" has no per-image pricing — pick one below or search again.\n`))
+      if (filter(exact)) return exact
+      process.stdout.write(pc.yellow(`  "${exact.id}" is not a ${lane} model — pick one below or search again.\n`))
     }
     const matches = pool
-      .filter((m) => (lane === 'images' ? isImageModel(m) : true))
+      .filter(filter)
       .filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
       .sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id))
       .slice(0, 8)
@@ -281,8 +349,7 @@ async function pickModel(p: Prompter, list: ModelList, lane: Lane): Promise<Live
       continue
     }
     matches.forEach((m, i) => {
-      const price = lane === 'images' ? `${money(m.image ?? 0)}/image` : `${money(m.input)} / ${money(m.output)}`
-      process.stdout.write(`  ${pc.bold(String(i + 1))}. ${m.id}  ${pc.dim(m.provider)}  ${price}\n`)
+      process.stdout.write(`  ${pc.bold(String(i + 1))}. ${m.id}  ${pc.dim(m.provider)}  ${lanePrice(lane, m)}\n`)
     })
     const picked = await p.ask('Pick a model', '')
     const index = Number(picked) - 1

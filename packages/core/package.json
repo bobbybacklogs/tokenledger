@@ -1,7 +1,7 @@
 {
   "name": "@tokenledger/core",
-  "version": "0.5.0",
-  "description": "AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter and models.dev, scenario projections, and tier math.",
+  "version": "0.6.0",
+  "description": "AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter, models.dev, GitHub Copilot, and Vercel AI Gateway; token/image/embed/video lanes; credits plans; scenario projections.",
   "keywords": [
     "ai",
     "llm",
@@ -9,8 +9,12 @@
     "pricing",
     "unit-economics",
     "cost",
+    "credits",
+    "embeddings",
     "openrouter",
-    "models.dev"
+    "models.dev",
+    "github",
+    "vercel"
   ],
   "license": "MIT",
   "type": "module",

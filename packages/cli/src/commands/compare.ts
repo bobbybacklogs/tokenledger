@@ -60,7 +60,7 @@ export function compareCommand(program: Command): void {
     .option('-u, --users <n>', 'override total users')
     .option('-l, --limit <n>', 'with no model ids, compare the first N featured models (default 8)', Number)
     .option('-k, --category <name>', 'with no model ids, compare models of this category: general, coding, reasoning, vision, image, embedding, audio')
-    .option('--source <sources>', 'pricing source per model: comma-separated openrouter, models.dev, offline, or default (default = openrouter)')
+    .option('--source <sources>', 'pricing source per model: comma-separated openrouter, models.dev, github, vercel, offline, or default (default = openrouter)')
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
     .option('-j, --json', 'output raw JSON')
     .action(

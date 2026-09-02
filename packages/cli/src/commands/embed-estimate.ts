@@ -1,17 +1,16 @@
 import type { Command } from 'commander'
-import { buildImageScenario, resolveModelList, SOURCE_OPTION_HELP } from '../helpers.js'
-import { runImageProjection } from '../render.js'
+import { buildEmbeddingScenario, resolveModelList, SOURCE_OPTION_HELP } from '../helpers.js'
+import { runEmbeddingProjection } from '../render.js'
 
-/** Project the image lane (image model × images/user × users) for a tier mix. */
-export function imageEstimateCommand(program: Command): void {
+export function embedEstimateCommand(program: Command): void {
   const collect = (value: string, previous: string[]): string[] => previous.concat([value])
 
   program
-    .command('image-estimate')
-    .description('Project image-generation spend, revenue, and margin (image model × images/user × users)')
-    .option('-m, --model <id>', 'image model id (OpenRouter-style, e.g. openai/gpt-5-image)')
+    .command('embed-estimate')
+    .description('Project embeddings spend, revenue, and margin (embed model × tokens/user × users)')
+    .option('-m, --model <id>', 'embedding model id (e.g. openai/text-embedding-3-small)')
     .option('-u, --users <n>', 'total users; per-tier splits scale proportionally')
-    .option('-t, --tier <spec>', 'add a tier: Name:users:price:imagesPerUser:quota (repeatable)', collect, [])
+    .option('-t, --tier <spec>', 'add a tier: Name:users:price:embedTokensPerUser:quota (repeatable)', collect, [])
     .option('-f, --tiers <file>', 'load tiers from a JSON array file')
     .option('--source <name>', SOURCE_OPTION_HELP)
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed')
@@ -27,13 +26,13 @@ export function imageEstimateCommand(program: Command): void {
         json?: boolean
       }) => {
         const list = await resolveModelList({ source: options.source, offline: Boolean(options.offline) })
-        const { scenario } = await buildImageScenario({
+        const { scenario } = await buildEmbeddingScenario({
           model: options.model,
           users: options.users,
           tierSpecs: options.tier,
           tiersFile: options.tiers,
         })
-        await runImageProjection(list, scenario, { json: Boolean(options.json), model: options.model })
+        await runEmbeddingProjection(list, scenario, { json: Boolean(options.json), model: options.model })
       },
     )
 }

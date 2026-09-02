@@ -1,6 +1,6 @@
 # @tokenledger/core
 
-AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter and models.dev, scenario projections, and tier math. One runtime dependency (`mdev-sdk`, itself zero-dependency); works in Node ≥ 20 and in the browser.
+AI unit-economics engine for TokenLedger: live LLM pricing from OpenRouter, models.dev, GitHub Copilot, and Vercel AI Gateway, scenario projections, and tier math. One runtime dependency (`mdev-sdk`, itself zero-dependency); works in Node ≥ 20 and in the browser.
 
 ## Install
 
@@ -30,12 +30,15 @@ console.log(projection.spend, projection.revenue, projection.margin)
 
 | Export | Description |
 | --- | --- |
-| `loadModels(options?)` | `Promise<ModelList>` — live OpenRouter feed by default, models.dev with `{ source: 'modelsdev' }`, offline fallback. Never throws; check `list.source` (`'live'` \| `'modelsdev'` \| `'offline'`). |
+| `loadModels(options?)` | `Promise<ModelList>` — live OpenRouter feed by default; `{ source: 'modelsdev' \| 'github' \| 'vercel' }` for the other catalogs; offline fallback. Never throws; check `list.source` (`'live'` \| `'modelsdev'` \| `'github'` \| `'vercel'` \| `'offline'`). |
 | `fetchModels(options?)` | `Promise<ModelList>` — live OpenRouter fetch only; throws on network/HTTP errors. |
 | `fetchModelsDev(options?)` | `Promise<ModelList>` — live models.dev fetch only (via `mdev-sdk`); throws on network/HTTP errors. |
+| `fetchGitHubModels(options?)` | `Promise<ModelList>` — GitHub Copilot slice of models.dev (GitHub Models was retired). Throws on network/HTTP errors. |
+| `fetchVercelModels(options?)` | `Promise<ModelList>` — live Vercel AI Gateway fetch only; throws on network/HTTP errors. |
 | `catalogModels()` | `ModelList` — the bundled estimate catalog (token + image lanes). |
 | `normalizeOpenRouterModels(payload)` | Normalize a raw OpenRouter `/api/v1/models` payload into `LiveModel[]`. |
 | `normalizeModelsDevProviders(providers)` | Normalize a models.dev `ProviderMap` into `LiveModel[]` (prices already USD/1M; unpriced models skipped). |
+| `normalizeVercelModels(payload)` | Normalize a Vercel AI Gateway `/v1/models` payload into `LiveModel[]` (per-token prices scaled to USD/1M; `pricing.image` kept as USD per image). |
 | `categorizeModel(model)` | Infer a coarse category for a model: `general` \| `coding` \| `reasoning` \| `vision` \| `image` \| `embedding` \| `audio` (heuristic on id/name/modality/image). |
 | `matchesCategory(model, category)` | True when a model falls into the given category. |
 | `MODEL_CATEGORIES` | The ordered list of supported categories. |
@@ -45,6 +48,14 @@ console.log(projection.spend, projection.revenue, projection.margin)
 | `findModel(models, query)` | Look up by exact id, exact name, or a trailing/partial slug. |
 | `calculateScenario(scenario, model)` | `Projection` — spend, revenue, blended cost/user, margin, per-tier math. |
 | `calculateImageScenario(scenario, model)` | `Projection` for the image lane: spend is image spend, per-tier cost is image cost. |
+| `calculateEmbeddingScenario(scenario, model)` | `Projection` for the embeddings lane: spend is embed-token spend. |
+| `calculateVideoScenario(scenario, model)` | `Projection` for the video lane: spend is `users × seconds × $/s`. |
+| `calculateCreditScenario(scenario, model)` | Credit-plan projection: included credits, burn from list spend, overage, days-to-reset. |
+| `defaultCreditScenario()` | Starter Growth plan with per-tier `creditsIncluded` + overage rules. |
+| `usdToCredits` / `creditsToUsd` / `nextCreditReset` / `overageSpendUsd` | Credit-plan building blocks. |
+| `featuredEmbeddingModels(models, opts?)` | Featured embedding models (id/name heuristic, input-only pricing). |
+| `featuredVideoModels(models, opts?)` | Featured video models (per-second pricing). |
+| `isEmbeddingModel(model)` / `isVideoModel(model)` / `isCacheModel(model)` | Lane predicates. |
 | `tierProjection(tier, model)` | Per-tier cost, revenue, margin, and quota utilization. |
 | `imageTierProjection(tier, model)` | Per-tier image cost, revenue, and margin (no quota utilization). |
 | `tierRevenue(tier)` | Monthly subscription revenue for a tier. |
@@ -69,11 +80,15 @@ console.log(projection.spend, projection.revenue, projection.margin)
 
 `fetchModels` calls `https://openrouter.ai/api/v1/models` (no API key). Prices arrive per token and are converted to per-1M-token values. Models without a usable prompt/completion price are skipped.
 
-`fetchModelsDev` calls the public [models.dev](https://models.dev) catalog via `mdev-sdk` (no API key) — the same open catalog of providers, models, and prices that powers OpenCode. Prices are already USD per 1M tokens; models without a `cost` are unpriced (absence ≠ free) and are skipped, mirroring the OpenRouter skip. Canonical model ids are `provider/model`, and provider display names come from the catalog itself. models.dev does not publish per-image pricing, so the image lane is only populated by OpenRouter data.
+`fetchModelsDev` calls the public [models.dev](https://models.dev) catalog via `mdev-sdk` (no API key) — the same open catalog of providers, models, and prices that powers OpenCode. Prices are already USD per 1M tokens; models without a `cost` are unpriced (absence ≠ free) and are skipped, mirroring the OpenRouter skip. Canonical model ids are `provider/model`, and provider display names come from the catalog itself. models.dev does not publish per-image pricing, so the image lane is only populated by OpenRouter and Vercel data.
 
-When neither live feed is reachable, `loadModels` returns the bundled catalog (all entries flagged `estimate: true`) so callers can still run projections — but always surface `list.source` to your users.
+`fetchGitHubModels` is the GitHub Copilot slice of models.dev (`github-copilot/<model>`). [GitHub Models](https://docs.github.com/en/github-models/about-github-models) (the playground / inference catalog) was retired in July 2026; Copilot is the remaining GitHub-hosted list with public prices.
 
-Image-capable models also expose `image` (USD per generated image). OpenRouter's feed reports `image_output` scaled ×1000, so TokenLedger converts it to per-image USD (e.g. GPT-5 Image lists `0.00004` → `$0.04/image`).
+`fetchVercelModels` calls `https://ai-gateway.vercel.sh/v1/models` (no API key). Language prices arrive per token (same as OpenRouter) and are scaled to per-1M-token values. Image models quote `pricing.image` already in USD per generated image.
+
+When a live feed is unreachable, `loadModels` returns the bundled catalog (all entries flagged `estimate: true`) so callers can still run projections — but always surface `list.source` to your users.
+
+Image-capable models also expose `image` (USD per generated image). OpenRouter's feed reports `image_output` scaled ×1000, so TokenLedger converts it to per-image USD (e.g. GPT-5 Image lists `0.00004` → `$0.04/image`). Vercel quotes `pricing.image` already in USD per image.
 
 ## Cost model
 
@@ -82,6 +97,13 @@ monthly AI cost = users × ((input tokens / 1,000,000 × model.input)
                          + (output tokens / 1,000,000 × model.output))
 
 image lane: monthly image cost = users × (tier.images ?? 0) × (model.image ?? 0)
+
+embeddings: monthly embed cost = users × (tier.embedTokens / 1,000,000 × model.input)
+
+video lane: monthly video cost = users × (tier.videoSeconds ?? 0) × (model.video ?? 0)
+
+token lane with cache: input tokens are split by tier.cacheHit (0–100).
+Hits bill at model.cacheRead; misses bill at model.input.
 ```
 
 Revenue = users × price; gross margin = (revenue − spend) / revenue; blended cost/user = spend / total users. Image-lane projections reuse the same `Projection` shape with `spend` representing image spend.

@@ -1,15 +1,24 @@
 import {
+  DEFAULT_EMBEDDING_MODEL_ID,
   DEFAULT_IMAGE_MODEL_ID,
   DEFAULT_MODEL_ID,
+  DEFAULT_VIDEO_MODEL_ID,
   EXCHANGE_SIZES,
   catalogModels,
+  defaultCreditScenario,
+  defaultEmbeddingScenario,
   defaultImageScenario,
   defaultScenario,
+  defaultVideoScenario,
   findModel,
   loadModels,
   matchesCategory,
   presetEstimate,
   tierFromUsage,
+  type CreditPlan,
+  type CreditResetCadence,
+  type CreditScenario,
+  type CreditTier,
   type ExchangeSize,
   type LiveModel,
   type ModelCategory,
@@ -199,6 +208,24 @@ function readImageTierSpec(spec: string): TierConfig {
   return { name, users, price, input: 0, output: 0, images, quota }
 }
 
+function readCountTierSpec(spec: string, field: 'embedTokens' | 'videoSeconds', label: string): TierConfig {
+  const parts = spec.split(':')
+  if (parts.length < 4 || parts.length > 5) {
+    process.stderr.write(pc.red(`Invalid ${label} tier spec "${spec}". Expected Name:users:price:${label}PerUser[:quota]\n`))
+    process.exit(1)
+  }
+  const [name, usersRaw, priceRaw, countRaw, quotaRaw] = parts
+  const users = Number(usersRaw)
+  const price = Number(priceRaw)
+  const count = Number(countRaw)
+  const quota = quotaRaw === undefined ? 0 : Number(quotaRaw)
+  if (!name || [users, price, count, quota].some((value) => !Number.isFinite(value) || value < 0)) {
+    process.stderr.write(pc.red(`Invalid ${label} tier spec "${spec}". Expected Name:users:price:${label}PerUser[:quota]\n`))
+    process.exit(1)
+  }
+  return { name, users, price, input: 0, output: 0, quota, [field]: count }
+}
+
 /** Load tiers from --tier specs, a JSON file, or fall back to the defaults. */
 export async function resolveTiers(
   options: { tier?: string[]; tiers?: string },
@@ -214,6 +241,22 @@ export async function resolveImageTiers(options: { tier?: string[]; tiers?: stri
   if (options.tiers) return readTierFile(options.tiers)
   if (options.tier && options.tier.length > 0) return options.tier.map(readImageTierSpec)
   return defaultImageScenario().tiers
+}
+
+export async function resolveEmbeddingTiers(options: { tier?: string[]; tiers?: string }): Promise<TierConfig[]> {
+  if (options.tiers) return readTierFile(options.tiers)
+  if (options.tier && options.tier.length > 0) {
+    return options.tier.map((spec) => readCountTierSpec(spec, 'embedTokens', 'embedTokens'))
+  }
+  return defaultEmbeddingScenario().tiers
+}
+
+export async function resolveVideoTiers(options: { tier?: string[]; tiers?: string }): Promise<TierConfig[]> {
+  if (options.tiers) return readTierFile(options.tiers)
+  if (options.tier && options.tier.length > 0) {
+    return options.tier.map((spec) => readCountTierSpec(spec, 'videoSeconds', 'videoSeconds'))
+  }
+  return defaultVideoScenario().tiers
 }
 
 async function readTierFile(path: string, config?: ExchangeConfig): Promise<TierConfig[]> {
@@ -288,7 +331,279 @@ function normalizeTier(value: unknown, index: number, config?: ExchangeConfig): 
     quota,
   }
   if (item.images !== undefined) tier.images = asNum('images')
+  if (item.embedTokens !== undefined) tier.embedTokens = asNum('embedTokens')
+  if (item.videoSeconds !== undefined) tier.videoSeconds = asNum('videoSeconds')
+  if (item.cacheHit !== undefined) tier.cacheHit = asNum('cacheHit')
   return tier
+}
+
+function asCreditTier(tier: TierConfig, item?: Record<string, unknown>): CreditTier {
+  const asNum = (key: string) =>
+    item && typeof item[key] === 'number' ? (item[key] as number) : item ? Number(item[key] ?? NaN) : NaN
+  const creditsIncluded = item && Number.isFinite(asNum('creditsIncluded')) ? Math.max(0, asNum('creditsIncluded')) : 0
+  const credit: CreditTier = { ...tier, creditsIncluded }
+  if (item && item.overageBudgetUsd !== undefined && Number.isFinite(asNum('overageBudgetUsd'))) {
+    credit.overageBudgetUsd = Math.max(0, asNum('overageBudgetUsd'))
+  }
+  if (item && item.overagePerCredit !== undefined && Number.isFinite(asNum('overagePerCredit'))) {
+    credit.overagePerCredit = Math.max(0, asNum('overagePerCredit'))
+  }
+  return credit
+}
+
+/**
+ * Credit-tier CLI spec:
+ * `Name:users:price:input:output:quota:creditsIncluded[:overageBudgetUsd[:overagePerCredit]]`
+ * or usage: `Name:users:price:requests:creditsIncluded[:overageBudgetUsd[:overagePerCredit]]`
+ */
+function readCreditTierSpec(spec: string, config: ExchangeConfig): CreditTier {
+  const parts = spec.split(':')
+  if (parts.length === 5 || parts.length === 6 || parts.length === 7) {
+    // usage: Name:users:price:requests:credits[:budget[:rate]]
+    const [name, usersRaw, priceRaw, requestsRaw, creditsRaw, budgetRaw, rateRaw] = parts
+    const users = Number(usersRaw)
+    const price = Number(priceRaw)
+    const requests = Number(requestsRaw)
+    const creditsIncluded = Number(creditsRaw)
+    if (!name || [users, price, requests, creditsIncluded].some((v) => !Number.isFinite(v) || v < 0)) {
+      process.stderr.write(
+        pc.red(`Invalid credit tier spec "${spec}". Expected Name:users:price:requests:creditsIncluded[:overageBudget[:overagePerCredit]]\n`),
+      )
+      process.exit(1)
+    }
+    const { input, output, quota } = tierFromUsage({
+      requestsPerUserPerMonth: requests,
+      exchangeSize: config.size,
+      ...(config.size === 'custom'
+        ? { inputTokensPerExchange: config.inputTokens, outputTokensPerExchange: config.outputTokens }
+        : {}),
+    })
+    const credit: CreditTier = { name, users, price, input, output, quota, creditsIncluded }
+    if (budgetRaw !== undefined) {
+      const budget = Number(budgetRaw)
+      if (!Number.isFinite(budget) || budget < 0) {
+        process.stderr.write(pc.red(`Invalid overage budget in "${spec}".\n`))
+        process.exit(1)
+      }
+      credit.overageBudgetUsd = budget
+    }
+    if (rateRaw !== undefined) {
+      const rate = Number(rateRaw)
+      if (!Number.isFinite(rate) || rate < 0) {
+        process.stderr.write(pc.red(`Invalid overage per credit in "${spec}".\n`))
+        process.exit(1)
+      }
+      credit.overagePerCredit = rate
+    }
+    return credit
+  }
+
+  if (parts.length >= 7 && parts.length <= 9) {
+    // tokens: Name:users:price:input:output:quota:credits[:budget[:rate]]
+    const [name, usersRaw, priceRaw, inputRaw, outputRaw, quotaRaw, creditsRaw, budgetRaw, rateRaw] = parts
+    const users = Number(usersRaw)
+    const price = Number(priceRaw)
+    const input = Number(inputRaw)
+    const output = Number(outputRaw)
+    const quota = Number(quotaRaw)
+    const creditsIncluded = Number(creditsRaw)
+    if (!name || [users, price, input, output, quota, creditsIncluded].some((v) => !Number.isFinite(v) || v < 0)) {
+      process.stderr.write(
+        pc.red(
+          `Invalid credit tier spec "${spec}". Expected Name:users:price:input:output:quota:creditsIncluded[:overageBudget[:overagePerCredit]]\n`,
+        ),
+      )
+      process.exit(1)
+    }
+    const credit: CreditTier = { name, users, price, input, output, quota, creditsIncluded }
+    if (budgetRaw !== undefined) {
+      const budget = Number(budgetRaw)
+      if (!Number.isFinite(budget) || budget < 0) {
+        process.stderr.write(pc.red(`Invalid overage budget in "${spec}".\n`))
+        process.exit(1)
+      }
+      credit.overageBudgetUsd = budget
+    }
+    if (rateRaw !== undefined) {
+      const rate = Number(rateRaw)
+      if (!Number.isFinite(rate) || rate < 0) {
+        process.stderr.write(pc.red(`Invalid overage per credit in "${spec}".\n`))
+        process.exit(1)
+      }
+      credit.overagePerCredit = rate
+    }
+    return credit
+  }
+
+  process.stderr.write(
+    pc.red(
+      `Invalid credit tier spec "${spec}". Use usage Name:users:price:requests:credits… or tokens Name:users:price:input:output:quota:credits…\n`,
+    ),
+  )
+  process.exit(1)
+}
+
+export function resolveCreditPlanOptions(opts: {
+  creditValue?: string
+  multiplier?: string
+  reset?: string
+  resetDay?: string
+  asOf?: string
+}): CreditPlan {
+  const plan: CreditPlan = {}
+  if (opts.creditValue !== undefined) {
+    const n = Number(opts.creditValue)
+    if (!Number.isFinite(n) || n <= 0) {
+      process.stderr.write(pc.red(`Invalid --credit-value "${opts.creditValue}". Use a positive USD amount (e.g. 0.01).\n`))
+      process.exit(1)
+    }
+    plan.creditValueUsd = n
+  }
+  if (opts.multiplier !== undefined) {
+    const n = Number(opts.multiplier)
+    if (!Number.isFinite(n) || n <= 0) {
+      process.stderr.write(pc.red(`Invalid --multiplier "${opts.multiplier}". Use a positive number.\n`))
+      process.exit(1)
+    }
+    plan.modelMultiplier = n
+  }
+  if (opts.reset !== undefined) {
+    const raw = opts.reset.trim().toLowerCase()
+    if (raw !== 'monthly' && raw !== 'weekly' && raw !== 'never') {
+      process.stderr.write(pc.red(`Invalid --reset "${opts.reset}". Use monthly, weekly, or never.\n`))
+      process.exit(1)
+    }
+    plan.reset = raw as CreditResetCadence
+  }
+  if (opts.resetDay !== undefined) {
+    const n = Number(opts.resetDay)
+    if (!Number.isFinite(n)) {
+      process.stderr.write(pc.red(`Invalid --reset-day "${opts.resetDay}".\n`))
+      process.exit(1)
+    }
+    plan.resetDay = n
+  }
+  if (opts.asOf !== undefined && opts.asOf.trim()) plan.asOf = opts.asOf.trim()
+  return plan
+}
+
+export async function buildCreditScenario(options: ScenarioSource & {
+  creditValue?: string
+  multiplier?: string
+  reset?: string
+  resetDay?: string
+  asOf?: string
+}): Promise<{ scenario: CreditScenario; fromDefaults: boolean }> {
+  const plan = resolveCreditPlanOptions(options)
+
+  if (options.scenario) {
+    const loaded = await loadCreditScenarioFile(options.scenario)
+    return {
+      scenario: {
+        ...loaded.scenario,
+        plan: { ...loaded.scenario.plan, ...plan },
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.users !== undefined ? { users: Number(options.users) } : {}),
+      },
+      fromDefaults: false,
+    }
+  }
+
+  const config = resolveExchangeConfig({ size: options.size, inputPer: options.inputPer, outputPer: options.outputPer })
+  const usingDefaultTiers = !options.tierSpecs?.length && !options.tiersFile
+  let tiers: CreditTier[]
+  if (options.tiersFile) {
+    tiers = await readCreditTiersFile(options.tiersFile, config)
+  } else if (options.tierSpecs?.length) {
+    tiers = options.tierSpecs.map((spec) => readCreditTierSpec(spec, config))
+  } else {
+    tiers = defaultCreditScenario().tiers
+  }
+
+  const defaultBase = usingDefaultTiers ? defaultCreditScenario() : null
+  const users = options.users !== undefined ? Number(options.users) : defaultBase?.users
+  const model = options.model?.trim() || defaultBase?.model || DEFAULT_MODEL_ID
+  const cacheHit = options.cacheHit !== undefined ? Number(options.cacheHit) : undefined
+  const nextTiers =
+    cacheHit !== undefined && Number.isFinite(cacheHit) ? tiers.map((tier) => ({ ...tier, cacheHit })) : tiers
+
+  return {
+    scenario: {
+      name: options.name ?? defaultBase?.name ?? 'CLI credits scenario',
+      model,
+      ...(users !== undefined ? { users } : {}),
+      tiers: nextTiers,
+      plan: { ...defaultBase?.plan, ...plan },
+    },
+    fromDefaults: usingDefaultTiers,
+  }
+}
+
+async function readCreditTiersFile(path: string, config?: ExchangeConfig): Promise<CreditTier[]> {
+  const fs = await import('node:fs/promises')
+  let raw: string
+  try {
+    raw = await fs.readFile(path, 'utf8')
+  } catch {
+    process.stderr.write(pc.red(`Could not read tiers file: ${path}\n`))
+    process.exit(1)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    process.stderr.write(pc.red(`"${path}" is not valid JSON.\n`))
+    process.exit(1)
+  }
+  if (!Array.isArray(parsed)) {
+    process.stderr.write(pc.red(`Tiers file "${path}" must contain a JSON array of tier objects.\n`))
+    process.exit(1)
+  }
+  return parsed.map((item, index) => {
+    const base = normalizeTier(item, index, config)
+    const record = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>
+    return asCreditTier(base, record)
+  })
+}
+
+export async function loadCreditScenarioFile(path: string): Promise<{ scenario: CreditScenario; fromDefaults: boolean }> {
+  const fs = await import('node:fs/promises')
+  let raw: string
+  try {
+    raw = await fs.readFile(path, 'utf8')
+  } catch {
+    process.stderr.write(pc.red(`Could not read scenario file: ${path}\n`))
+    process.exit(1)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    process.stderr.write(pc.red(`"${path}" is not valid JSON.\n`))
+    process.exit(1)
+  }
+  const item = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>
+  if (!Array.isArray(item.tiers)) {
+    process.stderr.write(pc.red(`Scenario file "${path}" must contain a "tiers" array.\n`))
+    process.exit(1)
+  }
+  const name = typeof item.name === 'string' && item.name ? item.name : 'Credits scenario'
+  const model = typeof item.model === 'string' && item.model ? item.model : DEFAULT_MODEL_ID
+  const users = typeof item.users === 'number' ? item.users : undefined
+  const tiers = (item.tiers as unknown[]).map((value, index) => {
+    const base = normalizeTier(value, index)
+    const record = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>
+    return asCreditTier(base, record)
+  })
+  const planRaw = (typeof item.plan === 'object' && item.plan !== null ? item.plan : {}) as Record<string, unknown>
+  const plan = resolveCreditPlanOptions({
+    creditValue: planRaw.creditValueUsd !== undefined ? String(planRaw.creditValueUsd) : undefined,
+    multiplier: planRaw.modelMultiplier !== undefined ? String(planRaw.modelMultiplier) : undefined,
+    reset: typeof planRaw.reset === 'string' ? planRaw.reset : undefined,
+    resetDay: planRaw.resetDay !== undefined ? String(planRaw.resetDay) : undefined,
+    asOf: typeof planRaw.asOf === 'string' ? planRaw.asOf : undefined,
+  })
+  return { scenario: { name, model, ...(users !== undefined ? { users } : {}), tiers, plan }, fromDefaults: false }
 }
 
 export interface ScenarioSource {
@@ -304,6 +619,8 @@ export interface ScenarioSource {
   inputPer?: string
   /** Per-exchange output tokens when `size` is `custom`. */
   outputPer?: string
+  /** Prompt-cache hit percent (0–100) applied to every tier. */
+  cacheHit?: string
 }
 
 export interface BuiltScenario {
@@ -327,9 +644,14 @@ export async function buildScenario(options: ScenarioSource): Promise<BuiltScena
   // Surface the token assumption whenever usage-style specs are in play.
   const usingUsage = Boolean(options.size) || (options.tierSpecs?.some((s) => s.split(':').length === 4) ?? false)
   const assumption = usingUsage ? exchangeAssumption(config) : undefined
+  const cacheHit = options.cacheHit !== undefined ? Number(options.cacheHit) : undefined
+  const nextTiers =
+    cacheHit !== undefined && Number.isFinite(cacheHit)
+      ? tiers.map((tier) => ({ ...tier, cacheHit }))
+      : tiers
 
   return {
-    scenario: { name: options.name ?? defaultBase?.name ?? 'CLI scenario', model, ...(users !== undefined ? { users } : {}), tiers },
+    scenario: { name: options.name ?? defaultBase?.name ?? 'CLI scenario', model, ...(users !== undefined ? { users } : {}), tiers: nextTiers },
     fromDefaults: usingDefaultTiers,
     ...(assumption ? { assumption } : {}),
   }
@@ -354,6 +676,38 @@ export async function buildImageScenario(options: ScenarioSource): Promise<{ sce
     },
     fromDefaults: usingDefaultTiers,
   }
+}
+
+async function buildUnitScenario(
+  options: ScenarioSource,
+  defaults: () => Scenario,
+  fallbackModel: string,
+  resolve: (options: { tier?: string[]; tiers?: string }) => Promise<TierConfig[]>,
+  fallbackName: string,
+): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
+  if (options.scenario) return loadScenarioFile(options.scenario)
+  const tiers = await resolve({ tier: options.tierSpecs, tiers: options.tiersFile })
+  const usingDefaultTiers = !options.tierSpecs?.length && !options.tiersFile
+  const defaultBase = usingDefaultTiers ? defaults() : null
+  const users = options.users !== undefined ? Number(options.users) : defaultBase?.users
+  const model = options.model?.trim() || defaultBase?.model || fallbackModel
+  return {
+    scenario: {
+      name: options.name ?? defaultBase?.name ?? fallbackName,
+      model,
+      ...(users !== undefined ? { users } : {}),
+      tiers,
+    },
+    fromDefaults: usingDefaultTiers,
+  }
+}
+
+export function buildEmbeddingScenario(options: ScenarioSource): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
+  return buildUnitScenario(options, defaultEmbeddingScenario, DEFAULT_EMBEDDING_MODEL_ID, resolveEmbeddingTiers, 'CLI embeddings scenario')
+}
+
+export function buildVideoScenario(options: ScenarioSource): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
+  return buildUnitScenario(options, defaultVideoScenario, DEFAULT_VIDEO_MODEL_ID, resolveVideoTiers, 'CLI video scenario')
 }
 
 export async function loadScenarioFile(path: string): Promise<{ scenario: Scenario; fromDefaults: boolean }> {
@@ -384,8 +738,8 @@ export async function loadScenarioFile(path: string): Promise<{ scenario: Scenar
   return { scenario: { name, model, ...(users !== undefined ? { users } : {}), tiers }, fromDefaults: false }
 }
 
-/** Which catalog a command loads: live OpenRouter, live models.dev, or bundled offline. */
-export type SourceChoice = 'openrouter' | 'modelsdev' | 'offline'
+/** Which catalog a command loads. */
+export type SourceChoice = 'openrouter' | 'modelsdev' | 'github' | 'vercel' | 'offline'
 
 const SOURCE_NAMES: Record<string, SourceChoice> = {
   default: 'openrouter',
@@ -394,10 +748,21 @@ const SOURCE_NAMES: Record<string, SourceChoice> = {
   'models.dev': 'modelsdev',
   modelsdev: 'modelsdev',
   mdev: 'modelsdev',
+  github: 'github',
+  copilot: 'github',
+  'github-copilot': 'github',
+  vercel: 'vercel',
+  'ai-gateway': 'vercel',
+  aigateway: 'vercel',
   offline: 'offline',
   catalog: 'offline',
   bundled: 'offline',
 }
+
+const SOURCE_HELP = 'openrouter, models.dev, github, vercel, or offline'
+
+/** `--source` flag help used by token-lane commands. */
+export const SOURCE_OPTION_HELP = `pricing source: ${SOURCE_HELP} (default: openrouter)`
 
 /** Resolve a `--source <name>` value (with `--offline` as an alias) to a choice. */
 export function resolveSourceChoice(opts: { source?: string; offline?: boolean }): SourceChoice {
@@ -406,7 +771,7 @@ export function resolveSourceChoice(opts: { source?: string; offline?: boolean }
   if (raw) {
     const choice = SOURCE_NAMES[raw]
     if (choice) return choice
-    process.stderr.write(pc.red(`Unknown source "${opts.source}". Use one of: openrouter, models.dev, offline.\n`))
+    process.stderr.write(pc.red(`Unknown source "${opts.source}". Use one of: ${SOURCE_HELP}.\n`))
     process.exit(1)
   }
   return 'openrouter'
@@ -423,13 +788,21 @@ export async function resolveModelList(opts: { source?: string; offline?: boolea
 }
 
 export function sourceLine(list: ModelList): string {
+  const count = pc.dim(` · ${list.models.length.toLocaleString()} models`)
+  const fetched = list.fetchedAt ? pc.dim(` · fetched ${list.fetchedAt}`) : ''
   if (list.source === 'live') {
-    return pc.green('live pricing') + pc.dim(` · OpenRouter · ${list.models.length.toLocaleString()} models`) + pc.dim(` · fetched ${list.fetchedAt}`)
+    return pc.green('live pricing') + pc.dim(' · OpenRouter') + count + fetched
   }
   if (list.source === 'modelsdev') {
-    return pc.green('models.dev pricing') + pc.dim(` · ${list.models.length.toLocaleString()} models`) + pc.dim(` · fetched ${list.fetchedAt}`)
+    return pc.green('models.dev pricing') + count + fetched
   }
-  return pc.yellow('offline estimates') + pc.dim(` · bundled catalog · ${list.models.length.toLocaleString()} models`)
+  if (list.source === 'github') {
+    return pc.green('GitHub Copilot pricing') + count + fetched
+  }
+  if (list.source === 'vercel') {
+    return pc.green('Vercel AI Gateway pricing') + count + fetched
+  }
+  return pc.yellow('offline estimates') + pc.dim(' · bundled catalog') + count
 }
 
 /** Short human label for a source, used in per-row source columns. */
@@ -437,6 +810,10 @@ export function sourceLabel(source: SourceChoice): string {
   switch (source) {
     case 'modelsdev':
       return 'models.dev'
+    case 'github':
+      return 'GitHub Copilot'
+    case 'vercel':
+      return 'Vercel'
     case 'offline':
       return 'offline'
     default:
@@ -458,7 +835,7 @@ export function parseSourceSpec(spec?: string): SourceChoice[] | undefined {
     const choice = SOURCE_NAMES[raw]
     if (!choice) {
       process.stderr.write(
-        pc.red(`Unknown source "${part}". Use one of: openrouter, models.dev, offline (or "default" for OpenRouter).\n`),
+        pc.red(`Unknown source "${part}". Use one of: ${SOURCE_HELP} (or "default" for OpenRouter).\n`),
       )
       process.exit(1)
     }

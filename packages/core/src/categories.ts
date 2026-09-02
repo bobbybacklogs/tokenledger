@@ -3,8 +3,8 @@ import type { LiveModel } from './types.js'
 /**
  * Coarse model categories used for browsing and filtering. Categories are
  * inferred from a model's id, display name, per-image pricing, and modality
- * string (best-effort), since neither OpenRouter nor models.dev exposes an
- * explicit category field.
+ * string (best-effort), since the live catalogs do not expose an explicit
+ * category field.
  */
 export type ModelCategory =
   | 'general'

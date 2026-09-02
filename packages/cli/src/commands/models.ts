@@ -2,7 +2,7 @@ import { contextLabel, featuredModels, money, type LiveModel } from '@tokenledge
 import pc from 'picocolors'
 import type { Command } from 'commander'
 import { renderTable, type Column } from '../table.js'
-import { filterByCategory, resolveCategory, resolveModelList, sourceLine } from '../helpers.js'
+import { filterByCategory, resolveCategory, resolveModelList, SOURCE_OPTION_HELP, sourceLine } from '../helpers.js'
 
 interface ModelRow {
   id: string
@@ -87,7 +87,7 @@ const sortDescription = 'sort by price, output, context, provider, or id (defaul
 export function modelsCommand(program: Command): void {
   program
     .command('models')
-    .description('List model pricing (live from OpenRouter, models.dev with --source, or the offline catalog)')
+    .description('List model pricing (live from OpenRouter, models.dev, GitHub Copilot, Vercel AI Gateway, or the offline catalog)')
     .argument('[search]', 'filter by model id or name')
     .option(sortOption, sortDescription, 'provider')
     .option('--search <term>', 'filter by model id or name (alias for the positional argument)')
@@ -95,7 +95,7 @@ export function modelsCommand(program: Command): void {
     .option('-l, --limit <n>', 'limit the number of rows', parseLimit)
     .option('-k, --category <name>', 'filter by category: general, coding, reasoning, vision, image, embedding, audio')
     .option('-f, --featured', 'show only the curated featured models')
-    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
+    .option('--source <name>', SOURCE_OPTION_HELP)
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed (alias for --source offline)')
     .option('-j, --json', 'output raw JSON')
     .action(async (search: string | undefined, options: ModelsOptions) => {
@@ -113,7 +113,7 @@ export function searchCommand(program: Command): void {
     .option('-l, --limit <n>', 'limit the number of rows', parseLimit)
     .option('-k, --category <name>', 'filter by category: general, coding, reasoning, vision, image, embedding, audio')
     .option('-f, --featured', 'show only the curated featured models')
-    .option('--source <name>', 'pricing source: openrouter, models.dev, or offline (default: openrouter)')
+    .option('--source <name>', SOURCE_OPTION_HELP)
     .option('-o, --offline', 'use the bundled estimate catalog instead of the live feed (alias for --source offline)')
     .option('-j, --json', 'output raw JSON')
     .action(async (term: string, options: ModelsOptions) => {

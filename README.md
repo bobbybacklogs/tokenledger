@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
 </p>
 
-TokenLedger is an AI unit-economics planner for SaaS products. It pulls **live model pricing** from the public [OpenRouter catalog](https://openrouter.ai/docs/models) (`GET /api/v1/models`, no API key required) or the public [models.dev](https://models.dev) catalog, projects token and image-generation spend against your subscription tiers, and turns it into revenue, margin, and per-user cost — as an npm SDK, a CLI, and a browser planner.
+TokenLedger is an AI unit-economics planner for SaaS products. It pulls **live model pricing** from the public [OpenRouter catalog](https://openrouter.ai/docs/models) (`GET /api/v1/models`, no API key required), [models.dev](https://models.dev), [GitHub Copilot](https://docs.github.com/en/copilot/reference/ai-models/supported-models), or [Vercel AI Gateway](https://ai-gateway.vercel.sh/v1/models), projects token and image-generation spend against your subscription tiers, and turns it into revenue, margin, and per-user cost — as an npm SDK, a CLI, and a browser planner.
 
 ## Packages
 
@@ -24,10 +24,10 @@ All calculations live in `@tokenledger/core`, so the SDK, the CLI, and the web a
 
 ## What it does
 
-- Pulls **live model pricing** from OpenRouter (default) or models.dev (`--source models.dev`), covering OpenAI, Anthropic, Google, Mistral, and hundreds of other providers — with a bundled estimate catalog as an offline fallback, so it never breaks.
+- Pulls **live model pricing** from OpenRouter (default), models.dev, GitHub Copilot, or Vercel AI Gateway — covering OpenAI, Anthropic, Google, Mistral, and hundreds of other providers — with a bundled estimate catalog as an offline fallback, so it never breaks.
 - Select an active model and calculate projected monthly AI spend.
 - Define customer tiers (Free / Pro / Business) with user counts, subscription prices, token usage per user, and dynamic monthly quotas.
-- Run a parallel **image lane** — image model × images/user/month × users — with its own per-image pricing, benchmark table, and projection.
+- Run parallel **image, embeddings, and video lanes** — plus prompt-cache hits on the token lane (`cacheHit` % × `cacheRead` rate).
 - Report monthly AI cost, blended cost per user, projected revenue, and gross margin.
 - Export the projection as CSV or JSON, or save it as PDF from the browser.
 
@@ -40,7 +40,7 @@ npm install @tokenledger/core
 ```ts
 import { calculateImageScenario, calculateScenario, defaultScenario, findModel, loadModels } from '@tokenledger/core'
 
-// 1. Live prices from OpenRouter by default; pass { source: 'modelsdev' } for models.dev.
+// 1. Live prices from OpenRouter by default; pass { source: 'modelsdev' | 'github' | 'vercel' } for the other catalogs.
 //    The bundled catalog falls back when offline.
 const models = await loadModels()
 
@@ -73,6 +73,8 @@ tokenledger models
 tokenledger models claude
 tokenledger models --provider openai --sort price -l 5
 tokenledger models --source models.dev "claude-opus"     # models.dev catalog instead
+tokenledger models --source github                       # GitHub Copilot models
+tokenledger models --source vercel                       # Vercel AI Gateway
 tokenledger search gpt-4o                                 # dedicated search command
 tokenledger models --featured --offline     # no network, bundled estimates
 
@@ -99,9 +101,20 @@ tokenledger wizard --offline
 tokenledger images
 tokenledger image-estimate -m openai/gpt-5-image
 tokenledger image-compare --limit 10
+
+# Embeddings (RAG) and video seconds
+tokenledger embeddings --source models.dev
+tokenledger embed-estimate -m openai/text-embedding-3-small
+tokenledger videos --source vercel
+tokenledger video-estimate -m alibaba/wan-v2.6-t2v
+tokenledger estimate --cache-hit 40
+
+# Included credits + overage + reset
+tokenledger credits
+tokenledger credits --credit-value 0.01 --reset monthly --as-of 2026-09-02
 ```
 
-Every command shows whether prices are **live** (source + fetch time + model count) or **offline estimates**. Token-lane commands accept `--source openrouter` (default), `--source models.dev`, or `--source offline`. See [packages/cli/README.md](packages/cli/README.md) for full documentation.
+Every command shows whether prices are **live** (source + fetch time + model count) or **offline estimates**. Token-lane commands accept `--source openrouter` (default), `--source models.dev`, `--source github`, `--source vercel`, or `--source offline`. See [packages/cli/README.md](packages/cli/README.md) for full documentation.
 
 ## Scenario file format
 
@@ -136,7 +149,7 @@ image lane: monthly image cost
            = users × (images per user / month) × price per image
 ```
 
-Provider rates are USD per 1 million tokens, read live from OpenRouter (or models.dev with `--source models.dev`). Image generation is priced **per generated image** (OpenRouter's `image_output` is converted to USD per image, e.g. GPT-5 Image lists `0.00004` → `$0.04/image`). Model pricing is intended for planning, not billing reconciliation. Revenue = users × price; gross margin = (revenue − spend) / revenue.
+Provider rates are USD per 1 million tokens, read live from OpenRouter (or models.dev / GitHub Copilot / Vercel with `--source`). Image generation is priced **per generated image** (OpenRouter's `image_output` is converted to USD per image, e.g. GPT-5 Image lists `0.00004` → `$0.04/image`; Vercel quotes `pricing.image` already in USD per image). Model pricing is intended for planning, not billing reconciliation. Revenue = users × price; gross margin = (revenue − spend) / revenue.
 
 ## Web planner
 
@@ -145,7 +158,7 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The model benchmark table loads live prices on page load and includes a refresh button.
+Open [http://localhost:3000](http://localhost:3000). The model benchmark table loads live prices on page load, includes a refresh button, and a pricing-source picker (OpenRouter, models.dev, GitHub Copilot, Vercel).
 
 ## Requirements & development
 
@@ -155,8 +168,8 @@ Open [http://localhost:3000](http://localhost:3000). The model benchmark table l
 
 ## Notes
 
-- Live prices are list prices from OpenRouter; verify against provider billing before making purchasing or pricing decisions. Offline fallback entries are flagged as estimates in the UI and CLI.
-- Image pricing: OpenRouter's feed reports `image_output` scaled ×1000; TokenLedger converts it to USD per generated image. Providers that bill per token or per megapixel are approximated as a flat per-image rate.
+- Live prices are list prices from the selected catalog (OpenRouter, models.dev, GitHub Copilot, or Vercel AI Gateway); verify against provider billing before making purchasing or pricing decisions. Offline fallback entries are flagged as estimates in the UI and CLI. GitHub Models was retired in July 2026 — `--source github` is Copilot pricing from models.dev.
+- Image pricing: OpenRouter's feed reports `image_output` scaled ×1000; TokenLedger converts it to USD per generated image. Vercel quotes `pricing.image` already in USD per image. Providers that bill per token or per megapixel are approximated as a flat per-image rate.
 - No environment variables or API keys are required.
 
 ## License

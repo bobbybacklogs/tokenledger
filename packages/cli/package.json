@@ -1,7 +1,7 @@
 {
   "name": "@tokenledger/cli",
-  "version": "0.6.0",
-  "description": "TokenLedger CLI: live LLM pricing (OpenRouter / models.dev) and AI unit-economics projections from the terminal.",
+  "version": "0.7.0",
+  "description": "TokenLedger CLI: live LLM pricing (OpenRouter / models.dev / GitHub Copilot / Vercel), multi-lane projections, and credits plans from the terminal.",
   "keywords": [
     "ai",
     "llm",
@@ -9,9 +9,12 @@
     "pricing",
     "unit-economics",
     "cost",
+    "credits",
     "cli",
     "openrouter",
-    "models.dev"
+    "models.dev",
+    "github",
+    "vercel"
   ],
   "license": "MIT",
   "type": "module",
