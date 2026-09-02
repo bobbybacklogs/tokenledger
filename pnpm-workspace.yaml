@@ -3,3 +3,4 @@ packages:
 minimumReleaseAgeExclude:
   - '@next/*'
   - next
+  - '@tokenledger/core@0.6.0'

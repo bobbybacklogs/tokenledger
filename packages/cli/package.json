@@ -1,6 +1,6 @@
 {
   "name": "@tokenledger/cli",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "TokenLedger CLI: live LLM pricing (OpenRouter / models.dev / GitHub Copilot / Vercel), multi-lane projections, and credits plans from the terminal.",
   "keywords": [
     "ai",
@@ -37,7 +37,7 @@
     "prepublishOnly": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@tokenledger/core": "workspace:*",
+    "@tokenledger/core": "^0.6.0",
     "commander": "^12.1.0",
     "picocolors": "^1.1.1"
   },
